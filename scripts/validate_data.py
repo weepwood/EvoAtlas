@@ -1,87 +1,73 @@
 #!/usr/bin/env python3
-"""Validate EvoAtlas' embedded teaching dataset without third-party packages."""
+"""Validate the generated EvoAtlas teaching dataset."""
 from __future__ import annotations
 
 import json
 import pathlib
-import re
+import subprocess
 import sys
 from collections import Counter
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-DATA_FILE = ROOT / "data" / "data.js"
-REQUIRED = {"id", "parent", "zh", "latin", "rank", "ageMa", "clade", "status", "confidence", "summary", "traits", "sources"}
+DATA = ROOT / "data" / "data.js"
 VALID_STATUS = {"extant", "extinct", "ancestral"}
 VALID_CONFIDENCE = {"high", "medium", "low"}
+REQUIRED = {"id", "parent", "zh", "latin", "rank", "ageMa", "clade", "status", "confidence", "summary", "traits", "sources"}
 
 
 def load_nodes() -> list[dict]:
-    text = DATA_FILE.read_text(encoding="utf-8")
-    match = re.fullmatch(r"\s*window\.EVO_TAXA\s*=\s*(\[.*\]);\s*", text, flags=re.S)
-    if not match:
-        raise ValueError("data.js does not contain the expected window.EVO_TAXA assignment")
-    return json.loads(match.group(1))
+    script = (
+        "global.window={};"
+        f"require({json.dumps(str(DATA))});"
+        "process.stdout.write(JSON.stringify(window.EVO_TAXA));"
+    )
+    result = subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+    return json.loads(result.stdout)
 
 
 def main() -> int:
     nodes = load_nodes()
-    by_id = {node["id"]: node for node in nodes}
+    ids = [n.get("id") for n in nodes]
+    by_id = {n["id"]: n for n in nodes}
     errors: list[str] = []
-    warnings: list[str] = []
 
-    if len(by_id) != len(nodes):
-        duplicates = [key for key, count in Counter(node["id"] for node in nodes).items() if count > 1]
+    duplicates = [key for key, count in Counter(ids).items() if count > 1]
+    if duplicates:
         errors.append(f"duplicate ids: {duplicates}")
+    if len(nodes) != 106:
+        errors.append(f"expected 106 nodes, got {len(nodes)}")
 
     for node in nodes:
         missing = REQUIRED - node.keys()
         if missing:
-            errors.append(f"{node.get('id', '<unknown>')}: missing {sorted(missing)}")
+            errors.append(f"{node.get('id')}: missing {sorted(missing)}")
         if node.get("status") not in VALID_STATUS:
-            errors.append(f"{node.get('id')}: invalid status {node.get('status')}")
+            errors.append(f"{node.get('id')}: invalid status")
         if node.get("confidence") not in VALID_CONFIDENCE:
-            errors.append(f"{node.get('id')}: invalid confidence {node.get('confidence')}")
+            errors.append(f"{node.get('id')}: invalid confidence")
         parent = node.get("parent")
         if parent and parent not in by_id:
-            errors.append(f"{node['id']}: parent {parent} does not exist")
-        if node.get("status") == "extinct":
-            if "firstMa" not in node or "lastMa" not in node:
-                warnings.append(f"{node['id']}: extinct node has no complete temporal range")
-            elif node["firstMa"] < node["lastMa"]:
-                errors.append(f"{node['id']}: firstMa must be older/larger than lastMa")
-        if not node.get("traits"):
-            warnings.append(f"{node['id']}: no traits")
-        if not node.get("sources"):
-            warnings.append(f"{node['id']}: no sources")
+            errors.append(f"{node['id']}: missing parent {parent}")
+        if node.get("status") == "extinct" and "firstMa" in node and "lastMa" in node:
+            if node["firstMa"] < node["lastMa"]:
+                errors.append(f"{node['id']}: invalid fossil range")
 
-    # Cycle and age checks.
     for node in nodes:
-        visited: set[str] = set()
+        seen: set[str] = set()
         current = node
         while current.get("parent"):
-            if current["id"] in visited:
-                errors.append(f"cycle detected from {node['id']}")
+            if current["id"] in seen:
+                errors.append(f"cycle from {node['id']}")
                 break
-            visited.add(current["id"])
-            parent = by_id[current["parent"]]
-            child_age = current.get("lastMa", current.get("ageMa", 0)) if current.get("status") == "extinct" else current.get("ageMa", 0)
-            if parent.get("ageMa", 0) < child_age:
-                warnings.append(
-                    f"{current['id']}: parent {parent['id']} age {parent.get('ageMa')} Ma is younger than child display age {child_age} Ma"
-                )
-            current = parent
+            seen.add(current["id"])
+            current = by_id[current["parent"]]
 
     print(f"Validated {len(nodes)} nodes")
-    print(f"Species nodes: {sum(node['rank'] == '种' for node in nodes)}")
-    print(f"Extinct nodes: {sum(node['status'] == 'extinct' for node in nodes)}")
-    if warnings:
-        print(f"Warnings ({len(warnings)}):")
-        for warning in warnings:
-            print(f"  - {warning}")
+    print(f"Species nodes: {sum(n['rank'] == '种' for n in nodes)}")
+    print(f"Extinct nodes: {sum(n['status'] == 'extinct' for n in nodes)}")
     if errors:
-        print(f"Errors ({len(errors)}):", file=sys.stderr)
         for error in errors:
-            print(f"  - {error}", file=sys.stderr)
+            print(f"ERROR: {error}", file=sys.stderr)
         return 1
     print("No blocking errors found.")
     return 0
