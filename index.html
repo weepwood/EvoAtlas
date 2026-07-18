@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="EvoAtlas 生物分类进化图谱：以地质时间、系统发育树和最近共同祖先比较直观探索生命演化。" />
+  <title>EvoAtlas · 生物分类进化图谱</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="EvoAtlas 首页">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><strong>EvoAtlas</strong><small>生物分类进化图谱</small></span>
+      </a>
+      <nav class="main-nav" aria-label="主导航">
+        <button class="nav-btn active" data-view="tree">生命之树</button>
+        <button class="nav-btn" data-view="compare">物种比较</button>
+        <button class="nav-btn" data-view="sources">数据与方法</button>
+      </nav>
+      <div class="header-actions">
+        <button class="icon-btn" id="themeToggle" aria-label="切换主题" title="切换主题">◐</button>
+        <a class="source-link" href="#sources">资料来源</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">EXPLORE 4 BILLION YEARS OF LIFE</p>
+          <h1>生命不是一条阶梯，<br><em>而是一棵不断分叉的树。</em></h1>
+          <p class="hero-text">从共同祖先出发，沿地质时间浏览细菌、植物、真菌、动物与人类谱系。每一个现生物种都位于树梢，而不是另一个现生物种的“进化阶段”。</p>
+          <div class="hero-actions">
+            <button class="primary-btn" id="exploreHuman">追踪人类谱系</button>
+            <button class="secondary-btn" id="randomSpecies">随机探索物种</button>
+          </div>
+        </div>
+        <div class="hero-orbit" aria-hidden="true">
+          <div class="orbit orbit-a"><span>🦠</span><span>🌿</span><span>🍄</span></div>
+          <div class="orbit orbit-b"><span>🦋</span><span>🐟</span><span>🦖</span><span>🐘</span></div>
+          <div class="core"><span>LUCA</span><small>共同祖先</small></div>
+        </div>
+      </section>
+
+      <section class="stats-strip" aria-label="图谱统计">
+        <div><strong id="statNodes">—</strong><span>示范节点</span></div>
+        <div><strong id="statSpecies">—</strong><span>代表物种</span></div>
+        <div><strong id="statFossils">—</strong><span>化石类群</span></div>
+        <div><strong>4.0 Ga</strong><span>时间跨度</span></div>
+        <p>当前版本为可运行的教学型数据子集，结构已为接入完整权威数据集预留。</p>
+      </section>
+
+      <section class="workspace view-panel active" id="treeView" data-panel="tree">
+        <aside class="control-panel">
+          <div class="panel-heading">
+            <span>探索控制台</span>
+            <button class="text-btn" id="resetTree">重置</button>
+          </div>
+
+          <label class="search-box">
+            <span>⌕</span>
+            <input id="taxonSearch" type="search" placeholder="搜索中文名或学名…" autocomplete="off" />
+            <kbd>/</kbd>
+          </label>
+          <div class="search-results" id="searchResults" hidden></div>
+
+          <div class="control-group">
+            <label for="cladeSelect">聚焦类群</label>
+            <select id="cladeSelect">
+              <option value="luca">全部生命</option>
+              <option value="bacteria">细菌域</option>
+              <option value="archaea">古菌域</option>
+              <option value="eukaryota">真核生物</option>
+              <option value="archaeplastida">植物谱系</option>
+              <option value="fungi">真菌</option>
+              <option value="metazoa">动物</option>
+              <option value="vertebrata">脊椎动物</option>
+              <option value="mammalia">哺乳动物</option>
+              <option value="primates">灵长类</option>
+              <option value="hominina">人类谱系</option>
+            </select>
+          </div>
+
+          <div class="control-group two-col">
+            <label>时间尺度
+              <select id="scaleSelect">
+                <option value="log">对数尺度</option>
+                <option value="linear">线性尺度</option>
+              </select>
+            </label>
+            <label>显示级别
+              <select id="detailSelect">
+                <option value="full">完整图谱</option>
+                <option value="overview">主干概览</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="toggle-row">
+            <span><b>显示灭绝类群</b><small>叠加代表性化石支系</small></span>
+            <label class="switch"><input id="extinctToggle" type="checkbox" checked /><i></i></label>
+          </div>
+          <div class="toggle-row">
+            <span><b>地质事件背景</b><small>标注大灭绝与时代边界</small></span>
+            <label class="switch"><input id="eventToggle" type="checkbox" checked /><i></i></label>
+          </div>
+
+          <div class="legend">
+            <h3>图例</h3>
+            <div><i class="dot extant"></i>现生类群</div>
+            <div><i class="dot extinct"></i>灭绝类群</div>
+            <div><i class="dot ancestral"></i>共同祖先或干群节点</div>
+            <div><i class="line high"></i>较高置信度</div>
+            <div><i class="line low"></i>时间或拓扑不确定</div>
+          </div>
+
+          <div class="science-note">
+            <span>科学提示</span>
+            <p>分叉点表示最近共同祖先的假设位置，不表示左侧物种“变成”右侧物种。细菌和古菌还存在大量水平基因转移，真实历史可能更接近网络。</p>
+          </div>
+        </aside>
+
+        <div class="graph-card">
+          <div class="graph-toolbar">
+            <div>
+              <span class="live-dot"></span>
+              <b id="graphTitle">全部生命</b>
+              <small id="graphSubtitle">106 个示范节点 · 约 40 亿年</small>
+            </div>
+            <div class="toolbar-actions">
+              <button class="tool-btn" id="zoomOut" title="缩小">−</button>
+              <button class="tool-btn" id="zoomIn" title="放大">＋</button>
+              <button class="tool-btn wide" id="fitTree">适应画布</button>
+            </div>
+          </div>
+          <div class="timeline-scale" id="timelineScale"></div>
+          <div class="graph-stage" id="graphStage">
+            <svg id="treeSvg" role="img" aria-label="交互式生物系统发育树">
+              <defs>
+                <filter id="nodeGlow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                </filter>
+              </defs>
+              <g id="viewport">
+                <g id="eventLayer"></g>
+                <g id="edgeLayer"></g>
+                <g id="nodeLayer"></g>
+              </g>
+            </svg>
+            <div class="graph-hint">滚轮缩放 · 拖拽平移 · 点击节点查看详情</div>
+            <div class="tooltip" id="tooltip" hidden></div>
+          </div>
+        </div>
+
+        <aside class="detail-panel" id="detailPanel">
+          <div class="empty-detail" id="emptyDetail">
+            <span class="empty-glyph">⌘</span>
+            <h2>选择一个节点</h2>
+            <p>点击树上的类群或物种，查看分类路径、分化年代、关键特征与数据来源。</p>
+          </div>
+          <div class="taxon-detail" id="taxonDetail" hidden>
+            <div class="detail-cover" id="detailCover">
+              <span id="detailEmoji">🐾</span>
+              <div class="confidence-badge" id="confidenceBadge"></div>
+            </div>
+            <div class="detail-content">
+              <p class="detail-rank" id="detailRank"></p>
+              <h2 id="detailName"></h2>
+              <p class="latin" id="detailLatin"></p>
+              <p class="detail-summary" id="detailSummary"></p>
+              <div class="fact-grid">
+                <div><small>分化/出现时间</small><b id="detailAge"></b></div>
+                <div><small>生存状态</small><b id="detailStatus"></b></div>
+              </div>
+              <h3>关键特征</h3>
+              <div class="trait-list" id="traitList"></div>
+              <h3>分类路径</h3>
+              <div class="lineage" id="lineage"></div>
+              <h3>数据依据</h3>
+              <div class="source-chips" id="detailSources"></div>
+              <button class="compare-btn" id="addToCompare">加入物种比较</button>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="compare-section view-panel" id="compareView" data-panel="compare">
+        <div class="section-heading">
+          <p class="eyebrow">MOST RECENT COMMON ANCESTOR</p>
+          <h2>两个物种在哪里分开？</h2>
+          <p>系统会沿各自分类路径向上回溯，找到最近共同祖先节点，并展示分化后的两条谱系。</p>
+        </div>
+        <div class="compare-controls">
+          <label><span>物种 A</span><select id="speciesA"></select></label>
+          <button id="swapSpecies" class="swap-btn" title="交换物种">⇄</button>
+          <label><span>物种 B</span><select id="speciesB"></select></label>
+          <button id="runCompare" class="primary-btn">开始比较</button>
+        </div>
+        <div class="compare-result" id="compareResult"></div>
+      </section>
+
+      <section class="sources-section view-panel" id="sources" data-panel="sources">
+        <div class="section-heading">
+          <p class="eyebrow">DATA PROVENANCE & METHODOLOGY</p>
+          <h2>分类、拓扑、年代和图像必须分源处理</h2>
+          <p>单一数据库无法同时可靠覆盖所有物种名称、系统发育拓扑、分化时间、化石记录和媒体授权。正式版采用可追溯的数据融合管线。</p>
+        </div>
+        <div class="source-grid" id="sourceGrid"></div>
+        <div class="method-grid">
+          <article><span>01</span><h3>名称归一化</h3><p>以 Catalogue of Life / GBIF 接受名为主键基础，保留异名、中文名来源和版本号。</p></article>
+          <article><span>02</span><h3>拓扑合成</h3><p>从 Open Tree of Life 获取综合树；多分叉保持为“未解析”，不随意画成二叉树。</p></article>
+          <article><span>03</span><h3>时间校准</h3><p>优先读取 TimeTree 的研究综合值，显示中位数或范围，不把估算年代伪装成精确日期。</p></article>
+          <article><span>04</span><h3>化石叠加</h3><p>利用 Paleobiology Database 的地层和出现记录，把化石作为旁支或干群代表，而非默认直系祖先。</p></article>
+          <article><span>05</span><h3>媒体授权</h3><p>图片从 Wikimedia Commons / EOL 获取，同时保存作者、许可证和原始文件页。</p></article>
+          <article><span>06</span><h3>版本与争议</h3><p>每个节点记录数据版本、置信度和备选拓扑；分类发生变化时可重建而非手工覆盖。</p></article>
+        </div>
+        <div class="limitations">
+          <h3>当前原型边界</h3>
+          <p>页面内置 106 个经过人工整理的代表性节点，用于验证交互和数据结构，不是完整物种目录。部分深时分化年代采用教学级近似值；正式上线前应通过 API 或版本化数据快照自动校验，并对争议节点组织专家复核。</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div><strong>EvoAtlas</strong><span>Explore kinship, not hierarchy.</span></div>
+      <p>生命之树是一组持续更新的科学假设。页面应展示证据、不确定性和版本，而不只展示漂亮的分支。</p>
+    </footer>
+  </div>
+
+  <script src="./data/data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
