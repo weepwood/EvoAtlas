@@ -119,7 +119,8 @@
 
     const baseHeight=top+Math.max(1,leaves-1)*gap+95;
     const tentativeWidthZoom=(stageWidth-44)/state.width;
-    const targetWorldHeight=Math.max(470,(stageHeight-46)/Math.max(.55,Math.min(1,tentativeWidthZoom)));
+    const readableWidthZoom=stageWidth<600?.82:tentativeWidthZoom;
+    const targetWorldHeight=Math.max(470,(stageHeight-46)/Math.max(.55,Math.min(1,readableWidthZoom)));
     state.height=Math.max(baseHeight,targetWorldHeight);
 
     // Vertical branch spacing has no evolutionary time meaning. Expand short
@@ -261,14 +262,24 @@
     });
   }
   function applyTransform(){$('viewport').setAttribute('transform','translate('+state.tx+' '+state.ty+') scale('+state.zoom+')');}
-  function fit(){
+  function fit(showEntireTree=false){
     if(state.view!=='tree')return;
     const box=$('graphStage').getBoundingClientRect();
     if(box.width<10||box.height<10)return;
-    const zoom=Math.max(.12,Math.min(1.5,Math.min((box.width-44)/state.width,(box.height-40)/state.height)));
-    state.zoom=zoom;
-    state.tx=(box.width-state.width*zoom)/2;
-    state.ty=(box.height-state.height*zoom)/2;
+    const natural=Math.max(.12,Math.min(1.5,Math.min((box.width-44)/state.width,(box.height-40)/state.height)));
+    const isNarrow=box.width<600;
+    if(isNarrow && !showEntireTree){
+      // Tiny all-at-once mobile renders are unreadable. Begin with an
+      // anchored, legible portion and let the user pan or press Fit for all.
+      state.zoom=Math.max(.8,Math.min(1.3,(box.height-34)/state.height));
+      const focus=state.pos.get(state.selected||state.root);
+      state.tx=(state.selected?box.width*.52:34)-(focus?.x||65)*state.zoom;
+      state.ty=(box.height-state.height*state.zoom)/2;
+    }else{
+      state.zoom=natural;
+      state.tx=(box.width-state.width*natural)/2;
+      state.ty=(box.height-state.height*natural)/2;
+    }
     applyTransform();
   }
   function centerNode(id,minimumZoom=.85){
@@ -574,7 +585,7 @@
     $('eventToggle').addEventListener('change',e=>{state.events=e.target.checked;render();});
     $('zoomIn').addEventListener('click',()=>zoomAt(1.2));
     $('zoomOut').addEventListener('click',()=>zoomAt(1/1.2));
-    $('fitTree').addEventListener('click',fit);
+    $('fitTree').addEventListener('click',()=>fit(true));
     const stage=$('graphStage');
     stage.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.deltaY<0?1.12:1/1.12,e.clientX,e.clientY);},{passive:false});
     stage.addEventListener('pointerdown',e=>{
