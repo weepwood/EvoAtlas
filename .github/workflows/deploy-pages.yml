@@ -38,6 +38,8 @@ jobs:
       - name: Check scripts
         run: |
           node --check app.js
+          node --check layout/engine.js
+          node --check layout/projection.js
           node --check ui/custom-select.js
           node --check data/data.js
           node --check data/curation.js
@@ -49,17 +51,22 @@ jobs:
           python3 scripts/validate_data.py
           python3 scripts/validate_ui.py
           node scripts/validate_research.js
+          node --test tests/layout-engine.test.cjs
+          node --test tests/projection.test.cjs
 
       - name: Prepare isolated Pages artifact
         run: |
-          mkdir -p dist/data dist/ui
+          mkdir -p dist/data dist/ui dist/layout
           cp index.html styles.css app.js dist/
           cp data/data.js data/curation.js data/species.js data/research.js dist/data/
           cp ui/custom-select.js dist/ui/
+          cp layout/engine.js layout/projection.js dist/layout/
           touch dist/.nojekyll
           test -s dist/index.html
           test -s dist/app.js
           test -s dist/ui/custom-select.js
+          test -s dist/layout/engine.js
+          test -s dist/layout/projection.js
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
