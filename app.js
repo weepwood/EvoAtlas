@@ -163,15 +163,25 @@
     state.layoutMeta=new Map(result.nodes.map(n=>[n.id,n]));
     state.visible=result.nodes.map(n=>byId.get(n.id));
     state.parents=new Map(result.nodes.map(n=>[n.id,n.parentId]));
-    state.pos=new Map(result.nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
     state.hiddenById=new Map(result.nodes.map(n=>[n.id,n.hiddenDescendants]));
     const stageHeight=stage.clientHeight||600;
+    // A small focused tree should not occupy only a 50px strip in a tall
+    // mobile canvas. Stretch Y alone; X still means depth or teaching age.
+    const yValues=result.nodes.map(n=>n.y);
+    const minY=Math.min(...yValues),maxY=Math.max(...yValues);
+    const span=maxY-minY;
+    const tips=result.nodes.filter(n=>n.childIds.length===0).length;
+    const yFactor=tips>=2&&tips<=8&&span>0
+      ?Math.max(1,Math.min(4,(stageHeight*.52)/span)):1;
+    const laidOutHeight=128+span*yFactor;
     const minHeight=Math.max(440,(stageHeight-46)/Math.max(.62,Math.min(1,(stageWidth-44)/result.bounds.width)));
-    const extraY=Math.max(0,minHeight-result.bounds.height)/2;
-    state.layoutSegments=result.segments.map(seg=>({...seg,y1:seg.y1+extraY,y2:seg.y2+extraY}));
-    state.pos.forEach(p=>p.y+=extraY);
+    const extraY=Math.max(0,minHeight-laidOutHeight)/2;
+    const mapY=y=>64+(y-minY)*yFactor+extraY;
+    state.pos=new Map(result.nodes.map(n=>[n.id,{x:n.x,y:mapY(n.y)}]));
+    state.layoutSegments=result.segments.map(seg=>({...seg,
+      y1:mapY(seg.y1),y2:mapY(seg.y2)}));
     state.width=result.bounds.width;
-    state.height=Math.max(result.bounds.height,minHeight);
+    state.height=Math.max(laidOutHeight,minHeight);
     state.maxMa=result.axis.maxMa||0;
     state.layoutStats=result.stats;
     if(result.stats.visibleNodes!==state.visible.length)throw Error('Layout node count mismatch');
