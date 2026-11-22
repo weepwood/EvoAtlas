@@ -40,10 +40,15 @@ async function main(){
     assert.equal(await page.locator('#graphStage').getAttribute('data-scale'),'linear');
 
     // Grid labels must not stack at the same horizontal position after a scale switch.
-    const grid=await page.locator('#gridLayer .axis-label').evaluateAll(nodes=>
+    await page.waitForSelector('#axisOverlay .axis-fixed-label');
+    const grid=await page.locator('#axisOverlay .axis-fixed-label').evaluateAll(nodes=>
       nodes.map(el=>({x:Number(el.getAttribute('x')),text:el.textContent})));
-    assert.ok(grid.length>=2,'linear mode must retain time labels');
+    assert.ok(grid.length>=2,'linear mode must retain readable fixed time labels');
     assert.ok(grid.every(item=>Number.isFinite(item.x)),'grid positions must be finite');
+    const fixedAxisTop=await page.locator('#axisOverlay').evaluate(el=>el.getBoundingClientRect().top);
+    await page.locator('#graphMinimap').click({position:{x:45,y:72}});
+    assert.ok(Math.abs((await page.locator('#axisOverlay').evaluate(el=>el.getBoundingClientRect().top))-fixedAxisTop)<1,
+      'ruler must not move vertically with the world tree');
 
     await page.locator('[data-select="detailSelect"] .custom-select-trigger').click();
     await page.keyboard.press('Escape');
