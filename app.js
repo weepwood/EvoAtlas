@@ -449,7 +449,7 @@
   function zoomAt(factor,cx,cy){
     const box=$('graphStage').getBoundingClientRect();
     const px=(cx??box.left+box.width/2)-box.left,py=(cy??box.top+box.height/2)-box.top;
-    const old=state.zoom,next=Math.max(.12,Math.min(4,old*factor));
+    const old=state.zoom,next=Math.max(.12,Math.min(5,old*factor));
     state.tx=px-(px-state.tx)*next/old;
     state.ty=py-(py-state.ty)*next/old;
     state.zoom=next;applyTransform();
@@ -481,6 +481,8 @@
     box.scrollLeft=box.scrollWidth;
   }
   function render(fitNow=false){
+    $('treeSvg').classList.remove('has-hover');
+    hideTip();
     build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
     $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
@@ -501,7 +503,8 @@
   }
   function showTip(e,n){
     const tip=$('tooltip');
-    tip.innerHTML='<strong>'+esc(n.zh)+'</strong><em>'+esc(n.latin)+'</em><small>'+esc(n.rank)+' · '+esc(nodeAge(n))+'</small>';
+    tip.innerHTML='<strong>'+esc(n.zh)+'</strong><em>'+esc(n.latin)+'</em><small>'+esc(n.rank)+' · '+esc(nodeAge(n))+'</small>'+
+      ((children.get(n.id)||[]).length?'<small>双击可聚焦此支系</small>':'');
     tip.hidden=false;moveTip(e);
   }
   function syncUrl(){
