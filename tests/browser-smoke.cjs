@@ -123,7 +123,7 @@ async function main(){
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
       'collapsing must hide only the family descendants');
     const selectedBefore=await page.locator('#viewport').getAttribute('transform');
-    await page.locator('#graphMinimap').click({position:{x:175,y:55}});
+    await page.locator('#graphMinimap').click({position:{x:124,y:55}});
     const selectedAfter=await page.locator('#viewport').getAttribute('transform');
     assert.notEqual(selectedAfter,selectedBefore,'clicking minimap should relocate the viewport');
     const mobileHint=await page.locator('.graph-overlay-hint').innerText();
