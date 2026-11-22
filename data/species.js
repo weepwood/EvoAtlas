@@ -223,7 +223,7 @@ cnidaria|海月水母|Aurelia aurita
 cnidaria|普通水螅|Hydra vulgaris
 cnidaria|星海葵|Nematostella vectensis
 cnidaria|红海葵|Actinia equina
-cnidaria|鹿角珊瑚|Acropora palmata
+cnidaria|掌状鹿角珊瑚|Acropora palmata
 cnidaria|僧帽水母|Physalia physalis
 nematoda|人蛔虫|Ascaris lumbricoides
 nematoda|马来丝虫|Brugia malayi
