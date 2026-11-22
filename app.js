@@ -329,7 +329,7 @@
     $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
     updateClades();updateHeaderBreadcrumb();
-    if(fitNow)requestAnimationFrame(fit);else applyTransform();
+    if(fitNow)requestAnimationFrame(()=>fit());else applyTransform();
   }
   function closeInspector(){$('detailPanel').classList.remove('open');}
   function openInspector(){if(window.matchMedia('(max-width: 1080px)').matches)$('detailPanel').classList.add('open');}
@@ -482,7 +482,7 @@
     document.querySelectorAll('.nav-item').forEach(el=>{const active=el.dataset.view===view;el.classList.toggle('active',active);el.setAttribute('aria-current',active?'page':'false');});
     updateHeaderBreadcrumb();window.EvoSelect?.close();
     $('mainArea').scrollTop=0;hideTip();closeSidebar();closeInspector();
-    if(view==='tree')requestAnimationFrame(fit);
+    if(view==='tree')requestAnimationFrame(()=>fit());
     if(view==='compare')compare();
     if(update)syncUrl();
   }
