@@ -191,12 +191,16 @@
   }
 
   function xFor(ma){
-    const left=65, right=215;
-    const usable=state.width-left-right;
+    const left=state.engine==='v2'?state.layoutMarginX:65;
+    const right=state.engine==='v2'?state.layoutRightInset:215;
+    const available=(state.engine==='v2'?state.layoutPlotWidth:state.width)-left-right;
     const fraction=state.scale==='linear'
-      ? 1-ma/Math.max(1,state.maxMa)
-      : 1-Math.log10(ma+1)/Math.log10(state.maxMa+1);
-    return left+usable*Math.max(0,Math.min(1,fraction));
+      ?1-ma/Math.max(1,state.maxMa)
+      :1-Math.log10(ma+1)/Math.log10(Math.max(1,state.maxMa)+1);
+    return left+Math.max(0,Math.min(1,fraction))*available;
+  }
+  function depthX(depth){
+    return state.layoutMarginX+depth*state.layoutDepthStep;
   }
   function layoutLegacy(){
     const branches=new Map(state.visible.map(n=>[n.id,[]]));
@@ -263,7 +267,14 @@
   }
   function drawGrid(){
     const layer=$('gridLayer');layer.replaceChildren();
-    // World-space guides; their labels are instead rendered in a fixed ruler.
+    if(state.engine==='v2'&&state.layoutMode==='structure'){
+      const depths=new Set([...state.layoutMeta.values()].map(n=>n.depth));
+      [...depths].sort((a,b)=>a-b).forEach(depth=>{
+        const x=depthX(depth);
+        layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'grid-line'}));
+      });
+      return;
+    }
     axisTicks().forEach(ma=>{
       const x=xFor(ma);
       layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'grid-line'}));
@@ -281,12 +292,17 @@
     overlay.setAttribute('viewBox','0 0 '+width+' 38');
     overlay.replaceChildren();
     const caption=make('text',{x:10,y:23,class:'axis-fixed-caption'});
-    caption.textContent='时间';overlay.append(caption);
+    const structural=state.engine==='v2'&&state.layoutMode==='structure';
+    caption.textContent=structural?'层级':'时间';overlay.append(caption);
     const placed=[{left:0,right:57}];
-    const ticks=axisTicks().map(ma=>({ma,x:state.tx+xFor(ma)*state.zoom}))
-      .filter(t=>t.x>=8&&t.x<width-8).sort((a,b)=>a.x-b.x);
-    for(const tick of ticks){
-      const text=axisText(tick.ma);
+    const ticks=structural
+      ? [...new Set([...state.layoutMeta.values()].map(n=>n.depth))]
+        .map(depth=>({depth,x:state.tx+depthX(depth)*state.zoom}))
+      : axisTicks().map(ma=>({ma,x:state.tx+xFor(ma)*state.zoom}));
+    ticks.sort((a,b)=>a.x-b.x);
+    const visibleTicks=ticks.filter(t=>t.x>=8&&t.x<width-8);
+    for(const tick of visibleTicks){
+      const text=structural?(tick.depth===0?'根节点':'层级 '+tick.depth):axisText(tick.ma);
       const w=approximateLabelWidth(text)+10;
       const x=Math.max(w/2+7,Math.min(width-w/2-7,tick.x));
       const rect={left:x-w/2,right:x+w/2};
@@ -303,7 +319,7 @@
   }
     function drawEvents(){
     const layer=$('eventLayer');layer.replaceChildren();
-    if(!state.events)return;
+    if(!state.events||(state.engine==='v2'&&state.layoutMode==='structure'))return;
     let previousLabelX=-Infinity;
     events.filter(event=>event.ma<=state.maxMa).sort((a,b)=>b.ma-a.ma).forEach(event=>{
       const x=xFor(event.ma);
