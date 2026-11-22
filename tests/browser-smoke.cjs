@@ -75,6 +75,9 @@ async function main(){
     await page.locator('[data-root="mammalia"]').click();
     const overviewCount=await page.locator('#nodeLayer .node').count();
     assert.ok(overviewCount>15 && overviewCount<=70,'overview needs capped LOD');
+    const desktopTransform=await page.locator('#viewport').getAttribute('transform');
+    const desktopScale=Number(desktopTransform.match(/scale\(([-\d.]+)\)/)?.[1]||0);
+    assert.ok(desktopScale>=0.74,'dense desktop overview should not render text as a thumbnail');
     await page.locator('[data-select="detailSelect"] .custom-select-trigger').click();
     await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'全部节点'}).click();
     assert.ok(await page.locator('#nodeLayer .node').count()>120,'full mammal branch should contain many taxa');
