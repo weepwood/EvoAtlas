@@ -101,6 +101,11 @@ async function main(){
     await page.keyboard.press('ArrowRight');
     assert.ok(await page.locator('#taxonDetail').isVisible(),'arrow-key node traversal should show details');
     await page.locator('[data-root="mammalia"]').click();
+    const repeatedClick=page.locator('#nodeLayer .node[data-id="carnivora"]');
+    await repeatedClick.dispatchEvent('click');
+    await repeatedClick.dispatchEvent('click');
+    assert.match(await page.locator('#headerBreadcrumb').innerText(),/食肉目/);
+    await page.locator('[data-root="mammalia"]').click();
     const desktopTransform=await page.locator('#viewport').getAttribute('transform');
     const desktopScale=Number(desktopTransform.match(/scale\(([-\d.]+)\)/)?.[1]||0);
     assert.ok(desktopScale>=0.74,'dense desktop overview should not render text as a thumbnail');
