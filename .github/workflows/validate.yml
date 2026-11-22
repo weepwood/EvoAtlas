@@ -23,6 +23,7 @@ jobs:
         run: |
           node --check app.js
           node --check layout/engine.js
+          node --check layout/projection.js
           node --check tests/layout-engine.test.cjs
           node --check ui/custom-select.js
           node --check data/data.js
@@ -31,6 +32,8 @@ jobs:
           node --check data/research.js
       - name: Pure layout engine geometry tests
         run: node --test tests/layout-engine.test.cjs
+      - name: Projection and local folding contracts
+        run: node --test tests/projection.test.cjs
       - name: Curated data structure
         run: python3 scripts/validate_data.py
       - name: HTML and JavaScript element contracts

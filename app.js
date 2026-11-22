@@ -19,7 +19,11 @@
   const featured = new Set(['sapiens','pan','neanderthal','australopithecus','gallus','tyrannosaurus','archaeopteryx','tiktaalik','arabidopsis','saccharomyces','canis','felis','balaenoptera','mus','pongo','gorilla','danaus','danio','ornithorhynchus','drosophila']);
   const state = {view:'tree',root:'luca',scale:'log',detail:'overview',extinct:true,events:true,selected:null,
     visible:[],parents:new Map(),pos:new Map(),width:1500,height:700,maxMa:4000,tx:0,ty:0,zoom:1,drag:null,
-    searchHits:[],searchIndex:0,theme:'system'};
+    searchHits:[],searchIndex:0,theme:'system',
+    engine:(new URLSearchParams(location.search).get('layout')==='legacy'||!window.EvoLayoutEngine||!window.EvoTreeProjection)?'legacy':'v2',
+    layoutMode:'time',foldedIds:new Set(),expandedIds:new Set(),
+    layoutSegments:[],layoutMeta:new Map(),layoutDepthStep:145,
+    layoutMarginX:58,layoutRightInset:185,layoutPlotWidth:1400};
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const esc = x => String(x ?? '').replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const make = (tag,attributes={}) => {
@@ -52,7 +56,7 @@
     }
     return timeOf(n)===0?'现生（0 Ma）':Number(timeOf(n).toFixed(1))+' Ma（教学近似）';
   }
-  function build() {
+  function buildLegacy() {
     const candidates=descendants(state.root).filter(n=>state.extinct || n.status!=='extinct');
     const candidateIds=new Set(candidates.map(n=>n.id));
     const include=new Set([state.root]);
@@ -112,15 +116,93 @@
     }
     state.hiddenById=new Map(state.visible.map(n=>[n.id,Math.max(0,(total.get(n.id)||1)-(shown.get(n.id)||1))]));
   }
-  function xFor(ma){
-    const left=65, right=215;
-    const usable=state.width-left-right;
-    const fraction=state.scale==='linear'
-      ? 1-ma/Math.max(1,state.maxMa)
-      : 1-Math.log10(ma+1)/Math.log10(state.maxMa+1);
-    return left+usable*Math.max(0,Math.min(1,fraction));
+
+  function buildV2(){
+    const view=window.EvoTreeProjection.project(taxa,{
+      rootId:state.root,detail:state.detail,selectedId:state.selected,
+      extinct:state.extinct,budget:window.innerWidth<700?34:58,
+      foldedIds:state.foldedIds,expandedIds:state.expandedIds
+    });
+    state.layoutSource=view;
+    state.totalAvailable=view.totalAvailable;
+  }
+  function build(){
+    return state.engine==='v2'?buildV2():buildLegacy();
+  }
+  function layoutV2(){
+    const stage=$('graphStage'),stageWidth=stage.clientWidth||900;
+    state.layoutMarginX=58;state.layoutRightInset=185;state.layoutDepthStep=145;
+    state.layoutPlotWidth=state.layoutMode==='structure'
+      ?Math.max(1040,stageWidth*1.2)
+      :state.scale==='linear'?Math.max(960,stageWidth*1.18)
+      :Math.max(940,stageWidth*1.12);
+    const result=window.EvoLayoutEngine.layoutTree(state.layoutSource.records,{
+      rootId:state.root,mode:state.layoutMode,timeScale:state.scale,
+      collapsedIds:state.layoutSource.collapsedIds,sort:'input',
+      plotWidth:state.layoutPlotWidth,
+      marginX:state.layoutMarginX,rightInset:state.layoutRightInset,
+      marginY:58,labelHeight:19,leafGap:13,subtreeGap:25,depthStep:state.layoutDepthStep
+    });
+    state.layoutMeta=new Map(result.nodes.map(n=>[n.id,n]));
+    state.visible=result.nodes.map(n=>byId.get(n.id));
+    state.parents=new Map(result.nodes.map(n=>[n.id,n.parentId]));
+    state.pos=new Map(result.nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
+    state.hiddenById=new Map(result.nodes.map(n=>[n.id,n.hiddenDescendants]));
+    const stageHeight=stage.clientHeight||600;
+    const minHeight=Math.max(440,(stageHeight-46)/Math.max(.62,Math.min(1,(stageWidth-44)/result.bounds.width)));
+    const extraY=Math.max(0,minHeight-result.bounds.height)/2;
+    state.layoutSegments=result.segments.map(seg=>({...seg,y1:seg.y1+extraY,y2:seg.y2+extraY}));
+    state.pos.forEach(p=>p.y+=extraY);
+    state.width=result.bounds.width;
+    state.height=Math.max(result.bounds.height,minHeight);
+    state.maxMa=result.axis.maxMa||0;
+    state.layoutStats=result.stats;
+    if(result.stats.visibleNodes!==state.visible.length)throw Error('Layout node count mismatch');
   }
   function layout(){
+    return state.engine==='v2'?layoutV2():layoutLegacy();
+  }
+  function toggleBranch(id){
+    if(state.engine!=='v2'||!byId.has(id))return;
+    const node=state.layoutMeta.get(id);
+    if(!node)return;
+    const old=state.pos.get(id),screenX=old?state.tx+old.x*state.zoom:null,
+      screenY=old?state.ty+old.y*state.zoom:null;
+    if(node.collapsed){
+      state.foldedIds.delete(id);
+      state.expandedIds.add(id);
+    }else if(node.childIds.length){
+      state.foldedIds.add(id);
+      state.expandedIds.delete(id);
+      // A descendant cannot remain selected when its branch is hidden.
+      if(state.selected&&state.selected!==id&&inside(state.selected,id)){
+        state.selected=id;
+        showDetail(byId.get(id));
+      }
+    }else return;
+    render(false);
+    const updated=state.pos.get(id);
+    if(updated&&screenX!==null){
+      state.tx=screenX-updated.x*state.zoom;
+      state.ty=screenY-updated.y*state.zoom;
+    }
+    applyTransform();
+    syncUrl();
+  }
+
+  function xFor(ma){
+    const left=state.engine==='v2'?state.layoutMarginX:65;
+    const right=state.engine==='v2'?state.layoutRightInset:215;
+    const available=(state.engine==='v2'?state.layoutPlotWidth:state.width)-left-right;
+    const fraction=state.scale==='linear'
+      ?1-ma/Math.max(1,state.maxMa)
+      :1-Math.log10(ma+1)/Math.log10(Math.max(1,state.maxMa)+1);
+    return left+Math.max(0,Math.min(1,fraction))*available;
+  }
+  function depthX(depth){
+    return state.layoutMarginX+depth*state.layoutDepthStep;
+  }
+  function layoutLegacy(){
     const branches=new Map(state.visible.map(n=>[n.id,[]]));
     state.visible.forEach(n=>{
       const parent=state.parents.get(n.id);
@@ -185,7 +267,14 @@
   }
   function drawGrid(){
     const layer=$('gridLayer');layer.replaceChildren();
-    // World-space guides; their labels are instead rendered in a fixed ruler.
+    if(state.engine==='v2'&&state.layoutMode==='structure'){
+      const depths=new Set([...state.layoutMeta.values()].map(n=>n.depth));
+      [...depths].sort((a,b)=>a-b).forEach(depth=>{
+        const x=depthX(depth);
+        layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'grid-line'}));
+      });
+      return;
+    }
     axisTicks().forEach(ma=>{
       const x=xFor(ma);
       layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'grid-line'}));
@@ -203,12 +292,17 @@
     overlay.setAttribute('viewBox','0 0 '+width+' 38');
     overlay.replaceChildren();
     const caption=make('text',{x:10,y:23,class:'axis-fixed-caption'});
-    caption.textContent='时间';overlay.append(caption);
+    const structural=state.engine==='v2'&&state.layoutMode==='structure';
+    caption.textContent=structural?'层级':'时间';overlay.append(caption);
     const placed=[{left:0,right:57}];
-    const ticks=axisTicks().map(ma=>({ma,x:state.tx+xFor(ma)*state.zoom}))
-      .filter(t=>t.x>=8&&t.x<width-8).sort((a,b)=>a.x-b.x);
-    for(const tick of ticks){
-      const text=axisText(tick.ma);
+    const ticks=structural
+      ? [...new Set([...state.layoutMeta.values()].map(n=>n.depth))]
+        .map(depth=>({depth,x:state.tx+depthX(depth)*state.zoom}))
+      : axisTicks().map(ma=>({ma,x:state.tx+xFor(ma)*state.zoom}));
+    ticks.sort((a,b)=>a.x-b.x);
+    const visibleTicks=ticks.filter(t=>t.x>=8&&t.x<width-8);
+    for(const tick of visibleTicks){
+      const text=structural?(tick.depth===0?'根节点':'层级 '+tick.depth):axisText(tick.ma);
       const w=approximateLabelWidth(text)+10;
       const x=Math.max(w/2+7,Math.min(width-w/2-7,tick.x));
       const rect={left:x-w/2,right:x+w/2};
@@ -225,7 +319,7 @@
   }
     function drawEvents(){
     const layer=$('eventLayer');layer.replaceChildren();
-    if(!state.events)return;
+    if(!state.events||(state.engine==='v2'&&state.layoutMode==='structure'))return;
     let previousLabelX=-Infinity;
     events.filter(event=>event.ma<=state.maxMa).sort((a,b)=>b.ma-a.ma).forEach(event=>{
       const x=xFor(event.ma);
@@ -286,7 +380,7 @@
     }
     return placements;
   }
-  function drawTree(){
+  function drawTreeLegacy(){
     const edges=$('edgeLayer'),nodes=$('nodeLayer');
     edges.replaceChildren();nodes.replaceChildren();
     const activePath=new Set(state.selected?path(state.selected).map(n=>n.id):[]);
@@ -297,6 +391,11 @@
       const d='M '+a.x+' '+a.y+' H '+middle+' V '+b.y+' H '+b.x;
       edges.append(make('path',{d,'data-child':n.id,class:'edge'+(activePath.has(n.id)&&activePath.has(parent)?' active-path':'')}));
     });
+    drawNodes();
+  }
+
+  function drawNodes(){
+    const nodes=$('nodeLayer');nodes.replaceChildren();
     const labels=chooseLabels();
     state.visible.forEach(n=>{
       const point=state.pos.get(n.id),meta=labels.get(n.id);
@@ -314,17 +413,24 @@
       node.append(label);
       const hidden=state.hiddenById?.get(n.id)||0;
       const hasChildren=(children.get(n.id)||[]).length>0;
-      if(state.detail==='overview' && n.id!==state.root && hidden>=3 && hasChildren){
-        const more=make('g',{class:'node-more','data-expand':n.id,role:'button',tabindex:0,
-          'aria-label':'聚焦'+n.zh+'，查看另外 '+hidden+' 个节点'});
-        const text=hidden>99?'99+':'+'+hidden;
+      const layoutNode=state.engine==='v2'?state.layoutMeta.get(n.id):null;
+      const canToggle=state.engine==='v2'
+        ? Boolean(layoutNode&&(layoutNode.collapsed||layoutNode.childIds.length))
+        : state.detail==='overview'&&hidden>=3&&hasChildren;
+      if(n.id!==state.root && canToggle){
+        const expanded=state.engine==='v2' && !layoutNode.collapsed;
+        const more=make('g',{class:'node-more'+(expanded?' expanded':''),
+          'data-expand':n.id,role:'button',tabindex:0,
+          'aria-label':expanded?'收起'+n.zh+'支系':'展开'+n.zh+'，查看另外 '+hidden+' 个节点'});
+        const text=expanded?'−':hidden>99?'99+':'+'+hidden;
         const w=14+text.length*7.2;
         more.append(make('rect',{x:9,y:18,width:w,height:18,rx:6}));
         const countLabel=make('text',{x:9+w/2,y:30,'text-anchor':'middle'});
         countLabel.textContent=text;more.append(countLabel);
-        more.addEventListener('click',event=>{event.stopPropagation();focusRoot(n.id);});
+        const action=()=>state.engine==='v2'?toggleBranch(n.id):focusRoot(n.id);
+        more.addEventListener('click',event=>{event.stopPropagation();action();});
         more.addEventListener('keydown',event=>{
-          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();focusRoot(n.id);}
+          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();action();}
         });
         node.append(more);
       }
@@ -352,6 +458,26 @@
       nodes.append(node);
     });
   }
+
+  function drawTreeV2(){
+    const edges=$('edgeLayer');
+    edges.replaceChildren();
+    const lineage=new Set(state.selected?path(state.selected).map(n=>n.id):[]);
+    for(const segment of state.layoutSegments){
+      const onPath=segment.kind==='stem'
+        ?lineage.has(segment.ownerId)
+        :lineage.has(segment.ownerId)&&lineage.has(segment.childId);
+      const d='M '+segment.x1+' '+segment.y1+' L '+segment.x2+' '+segment.y2;
+      edges.append(make('path',{d,
+        class:'edge '+(segment.kind==='stem'?'edge-stem':'edge-arm')+(onPath?' active-path':''),
+        'data-owner':segment.ownerId,'data-child':segment.childId||''}));
+    }
+    drawNodes();
+  }
+  function drawTree(){
+    return state.engine==='v2'?drawTreeV2():drawTreeLegacy();
+  }
+
   function navigateNodeKeyboard(e,id){
     if(e.key==='Enter'||e.key===' '){
       e.preventDefault();e.stopPropagation();
@@ -382,8 +508,11 @@
     const tree=$('treeSvg');
     const ancestry=new Set(id?path(id).map(n=>n.id):[]);
     tree.classList.toggle('has-hover',Boolean(id));
-    $('edgeLayer').querySelectorAll('[data-child]').forEach(el=>{
-      el.classList.toggle('hover-path',ancestry.has(el.dataset.child));
+    $('edgeLayer').querySelectorAll('[data-child], [data-owner]').forEach(el=>{
+      const isStem=el.classList.contains('edge-stem');
+      el.classList.toggle('hover-path',isStem
+        ?ancestry.has(el.dataset.owner)
+        :ancestry.has(el.dataset.child));
     });
     $('nodeLayer').querySelectorAll('.node').forEach(el=>{
       el.classList.toggle('hover-lineage',ancestry.has(el.dataset.id));
@@ -398,14 +527,25 @@
     const edges=$('minimapEdges'),nodes=$('minimapNodes');
     edges.replaceChildren();nodes.replaceChildren();
     if(!state.pos.size)return;
+    if(state.engine==='v2'){
+      for(const segment of state.layoutSegments){
+        const start=miniPoint({x:segment.x1,y:segment.y1});
+        const end=miniPoint({x:segment.x2,y:segment.y2});
+        edges.append(make('path',{d:'M '+start.x+' '+start.y+' L '+end.x+' '+end.y}));
+      }
+    }else{
+      for(const n of state.visible){
+        const point=miniPoint(state.pos.get(n.id));
+        const parent=state.parents.get(n.id);
+        if(parent && state.pos.has(parent)){
+          const from=miniPoint(state.pos.get(parent));
+          const middle=from.x+(point.x-from.x)*.35;
+          edges.append(make('path',{d:'M '+from.x+' '+from.y+' H '+middle+' V '+point.y+' H '+point.x}));
+        }
+      }
+    }
     for(const n of state.visible){
       const point=miniPoint(state.pos.get(n.id));
-      const parent=state.parents.get(n.id);
-      if(parent && state.pos.has(parent)){
-        const from=miniPoint(state.pos.get(parent));
-        const middle=from.x+(point.x-from.x)*.35;
-        edges.append(make('path',{d:'M '+from.x+' '+from.y+' H '+middle+' V '+point.y+' H '+point.x}));
-      }
       if(n.id===state.root || n.id===state.selected || (children.get(n.id)||[]).length>=5)
         nodes.append(make('circle',{cx:point.x,cy:point.y,r:n.id===state.selected?2.8:1.6,
           class:n.id===state.selected?'mini-selected':'mini-node'}));
@@ -517,12 +657,20 @@
     $('treeSvg').classList.remove('has-hover');
     hideTip();
     build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
+    $('graphStage').dataset.layout=state.layoutMode;
+    $('graphStage').dataset.engine=state.engine;
+    const structure=state.engine==='v2' && state.layoutMode==='structure';
+    $('scaleSelect').disabled=structure;
+    $('eventToggle').disabled=structure;
+    window.EvoSelect?.sync($('scaleSelect'));
     $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
     const hint=$('graphStage').querySelector('.graph-overlay-hint');
-    if(hint)hint.textContent=state.detail==='overview'&&state.visible.length<state.totalAvailable
-      ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
-      : '滚轮缩放 · 拖拽移动 · 点击类群查看';
+    if(hint)hint.textContent=state.engine==='v2'
+      ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · +N 局部展开 · 双击聚焦'
+      : state.detail==='overview'&&state.visible.length<state.totalAvailable
+        ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
+        : '滚轮缩放 · 拖拽移动 · 点击类群查看';
     updateClades();updateHeaderBreadcrumb();
     if(fitNow)requestAnimationFrame(()=>fit());else applyTransform();
   }
@@ -552,6 +700,15 @@
     if(!inside(id,state.root))state.root='luca';
     if(!state.extinct && n.status==='extinct'){$('extinctToggle').checked=true;state.extinct=true;}
     state.selected=id;
+    if(state.engine==='v2'){
+      // Reveal the selected true lineage, even when ancestors were auto-folded.
+      for(const ancestor of path(id)){
+        // Selection pins its ancestor path temporarily; do not persist every
+        // ancestor as an explicit expansion after the selection changes.
+        state.foldedIds.delete(ancestor.id);
+        if(ancestor.id===state.root)break;
+      }
+    }
     if(state.view!=='tree')switchView('tree',false);
     render(false);
     if(center)centerNode(id);
@@ -612,8 +769,9 @@
     state.selected=null;$('emptyDetail').hidden=false;$('taxonDetail').hidden=true;closeInspector();
   }
   function reset(){
-    Object.assign(state,{root:'luca',scale:'log',detail:'overview',extinct:true,events:true,selected:null});
-    $('scaleSelect').value='log';$('detailSelect').value='overview';
+    Object.assign(state,{root:'luca',scale:'log',layoutMode:'time',detail:'overview',extinct:true,events:true,selected:null});
+    state.foldedIds.clear();state.expandedIds.clear();
+    $('scaleSelect').value='log';$('layoutModeSelect').value='time';$('detailSelect').value='overview';
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
     window.EvoSelect?.syncAll();
     $('taxonSearch').value='';$('searchResults').hidden=true;
@@ -779,6 +937,14 @@
       if(random)selectNode(random.id);
     });
     $('scaleSelect').addEventListener('change',e=>{state.scale=e.target.value;render(true);});
+    $('layoutModeSelect').addEventListener('change',e=>{
+      state.layoutMode=e.target.value;
+      if(state.engine==='legacy' && state.layoutMode==='structure'){
+        state.layoutMode='time';e.target.value='time';
+        window.EvoSelect?.sync(e.target);
+      }
+      render(true);
+    });
     $('detailSelect').addEventListener('change',e=>{state.detail=e.target.value;render(true);});
     $('extinctToggle').addEventListener('change',e=>{
       state.extinct=e.target.checked;
@@ -961,6 +1127,10 @@
     }
     if(byId.has('sapiens'))$('speciesA').value='sapiens';
     if(byId.has('pan'))$('speciesB').value='pan';
+    if(state.engine==='legacy'){
+      $('layoutModeSelect').disabled=true;
+      $('layoutModeSelect').title='旧版回退模式仅支持时间坐标';
+    }
     window.EvoSelect?.enhanceAll();
     bind();readHash();compare();
   }
