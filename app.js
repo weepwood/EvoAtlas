@@ -316,8 +316,103 @@
       nodes.append(node);
     });
   }
-  function applyTransform(){$('viewport').setAttribute('transform','translate('+state.tx+' '+state.ty+') scale('+state.zoom+')');}
-  function fit(showEntireTree=false){
+  function navigateNodeKeyboard(e,id){
+    if(e.key==='Enter'||e.key===' '){
+      e.preventDefault();e.stopPropagation();
+      if(e.shiftKey && (children.get(id)||[]).length)focusRoot(id);
+      else selectNode(id);
+      return;
+    }
+    if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;
+    e.preventDefault();e.stopPropagation();
+    const ids=new Set(state.visible.map(n=>n.id));
+    const siblings=state.visible.filter(n=>state.parents.get(n.id)===state.parents.get(id))
+      .sort((a,b)=>state.pos.get(a.id).y-state.pos.get(b.id).y);
+    let next=null;
+    if(e.key==='ArrowLeft')next=state.parents.get(id);
+    else if(e.key==='ArrowRight'){
+      next=(children.get(id)||[]).find(child=>ids.has(child));
+      if(!next && (children.get(id)||[]).length){focusRoot(id);next=id;}
+    }else{
+      const i=siblings.findIndex(n=>n.id===id);
+      if(i>=0)next=siblings[i+(e.key==='ArrowDown'?1:-1)]?.id;
+    }
+    if(next && byId.has(next)){
+      selectNode(next,{center:true,open:false});
+      $('nodeLayer').querySelector('[data-id="'+next+'"]')?.focus({preventScroll:true});
+    }
+  }
+  function highlightLineage(id){
+    const tree=$('treeSvg');
+    const ancestry=new Set(id?path(id).map(n=>n.id):[]);
+    tree.classList.toggle('has-hover',Boolean(id));
+    $('edgeLayer').querySelectorAll('[data-child]').forEach(el=>{
+      el.classList.toggle('hover-path',ancestry.has(el.dataset.child));
+    });
+    $('nodeLayer').querySelectorAll('.node').forEach(el=>{
+      el.classList.toggle('hover-lineage',ancestry.has(el.dataset.id));
+    });
+  }
+  const MINI_W=204,MINI_H=118,MINI_PAD=8;
+  function miniPoint(point){
+    return {x:MINI_PAD+point.x*(MINI_W-MINI_PAD*2)/Math.max(1,state.width),
+      y:MINI_PAD+point.y*(MINI_H-MINI_PAD*2)/Math.max(1,state.height)};
+  }
+  function drawMinimap(){
+    const edges=$('minimapEdges'),nodes=$('minimapNodes');
+    edges.replaceChildren();nodes.replaceChildren();
+    if(!state.pos.size)return;
+    for(const n of state.visible){
+      const point=miniPoint(state.pos.get(n.id));
+      const parent=state.parents.get(n.id);
+      if(parent && state.pos.has(parent)){
+        const from=miniPoint(state.pos.get(parent));
+        const middle=from.x+(point.x-from.x)*.35;
+        edges.append(make('path',{d:'M '+from.x+' '+from.y+' H '+middle+' V '+point.y+' H '+point.x}));
+      }
+      if(n.id===state.root || n.id===state.selected || (children.get(n.id)||[]).length>=5)
+        nodes.append(make('circle',{cx:point.x,cy:point.y,r:n.id===state.selected?2.8:1.6,
+          class:n.id===state.selected?'mini-selected':'mini-node'}));
+    }
+    updateMinimapViewport();
+  }
+  function updateMinimapViewport(){
+    if(!state.pos.size)return;
+    const box=$('graphStage').getBoundingClientRect();
+    if(box.width<10||box.height<10)return;
+    const scaleX=(MINI_W-MINI_PAD*2)/Math.max(1,state.width);
+    const scaleY=(MINI_H-MINI_PAD*2)/Math.max(1,state.height);
+    const worldLeft=-state.tx/state.zoom,worldTop=-state.ty/state.zoom;
+    const x=Math.max(MINI_PAD,Math.min(MINI_W-MINI_PAD,MINI_PAD+worldLeft*scaleX));
+    const y=Math.max(MINI_PAD,Math.min(MINI_H-MINI_PAD,MINI_PAD+worldTop*scaleY));
+    const right=Math.max(MINI_PAD,Math.min(MINI_W-MINI_PAD,
+      MINI_PAD+(worldLeft+box.width/state.zoom)*scaleX));
+    const bottom=Math.max(MINI_PAD,Math.min(MINI_H-MINI_PAD,
+      MINI_PAD+(worldTop+box.height/state.zoom)*scaleY));
+    const view=$('minimapViewport');
+    view.setAttribute('x',x);view.setAttribute('y',y);
+    view.setAttribute('width',Math.max(2,right-x));
+    view.setAttribute('height',Math.max(2,bottom-y));
+  }
+  function constrainTransform(){
+    const box=$('graphStage').getBoundingClientRect();
+    if(box.width<10||box.height<10)return;
+    const limit=(translation,worldLength,screenLength)=>{
+      const scaled=worldLength*state.zoom;
+      if(scaled<=screenLength)return (screenLength-scaled)/2;
+      const visibleStrip=Math.min(88,screenLength*.23);
+      return Math.max(visibleStrip-scaled,Math.min(screenLength-visibleStrip,translation));
+    };
+    state.tx=limit(state.tx,state.width,box.width);
+    state.ty=limit(state.ty,state.height,box.height);
+  }
+  function applyTransform(){
+    constrainTransform();
+    $('viewport').setAttribute('transform','translate('+state.tx+' '+state.ty+') scale('+state.zoom+')');
+    $('graphStage').dataset.density=state.zoom<.32?'far':state.zoom<.58?'medium':'near';
+    updateMinimapViewport();
+  }
+    function fit(showEntireTree=false){
     if(state.view!=='tree')return;
     const box=$('graphStage').getBoundingClientRect();
     if(box.width<10||box.height<10)return;
