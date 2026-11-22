@@ -34,6 +34,7 @@ async function main(){
     const timeTrigger=page.locator('[data-select="scaleSelect"] .custom-select-trigger');
     await timeTrigger.click();
     assert.equal(await timeTrigger.getAttribute('aria-expanded'),'true');
+    await page.screenshot({path:'artifacts/evoatlas-select-icons.png'});
     await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'线性'}).click();
     assert.equal(await page.locator('#scaleSelect').inputValue(),'linear');
     assert.equal(await page.locator('#graphStage').getAttribute('data-scale'),'linear');
@@ -56,6 +57,7 @@ async function main(){
     const filter=page.locator('.custom-select-menu:not([hidden]) .custom-select-search');
     await filter.fill('Homo sapiens');
     assert.equal(await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').count(),1);
+    await page.screenshot({path:'artifacts/evoatlas-species-search.png'});
     await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').click();
     assert.equal(await page.locator('#speciesA').inputValue(),'sapiens');
     assert.ok(await page.locator('#compareResult .lca-banner').count()>0);
@@ -66,6 +68,10 @@ async function main(){
     await page.screenshot({path:'artifacts/evoatlas-sources-desktop.png',fullPage:true});
 
     await page.locator('[data-view="tree"]').click();
+    await page.locator('#taxonSearch').fill('Panthera tigris');
+    await page.locator('#searchResults .search-result').first().click();
+    assert.match(await page.locator('#detailLatin').innerText(),/Panthera tigris/);
+    assert.match(await page.locator('#detailRank').innerText(),/待核验/);
     await page.locator('[data-root="mammalia"]').click();
     const overviewCount=await page.locator('#nodeLayer .node').count();
     assert.ok(overviewCount>15 && overviewCount<=70,'overview needs capped LOD');
