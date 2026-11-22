@@ -185,20 +185,45 @@
   }
   function drawGrid(){
     const layer=$('gridLayer');layer.replaceChildren();
-    const ticks=axisTicks(),placed=[];
-    for(const ma of ticks){
+    // World-space guides; their labels are instead rendered in a fixed ruler.
+    axisTicks().forEach(ma=>{
       const x=xFor(ma);
-      layer.append(make('line',{x1:x,y1:49,x2:x,y2:state.height-25,class:'grid-line'}));
-      const label=ma===0?'现在':ma>=1000?Number((ma/1000).toFixed(2))+' Ga':Number(ma.toFixed(1))+' Ma';
-      const estimated=label.length*7+12;
-      const left=x+3,right=left+estimated;
-      if(placed.some(p=>left<p.right+15&&right>p.left-15))continue;
-      placed.push({left,right});
-      layer.append(renderLabel(label,x+3,30));
-    }
-    layer.append(make('line',{x1:52,y1:49,x2:state.width-140,y2:49,class:'axis-line'}));
+      layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'grid-line'}));
+    });
   }
-  function drawEvents(){
+  function axisText(ma){
+    if(ma===0)return '现在';
+    if(ma>=1000)return Number((ma/1000).toFixed(2))+' Ga';
+    return Number(ma.toFixed(1))+' Ma';
+  }
+  function drawAxisOverlay(){
+    const overlay=$('axisOverlay');
+    const width=$('graphStage').clientWidth;
+    if(width<10)return;
+    overlay.setAttribute('viewBox','0 0 '+width+' 38');
+    overlay.replaceChildren();
+    const caption=make('text',{x:10,y:23,class:'axis-fixed-caption'});
+    caption.textContent='时间';overlay.append(caption);
+    const placed=[{left:0,right:57}];
+    const ticks=axisTicks().map(ma=>({ma,x:state.tx+xFor(ma)*state.zoom}))
+      .filter(t=>t.x>=8&&t.x<width-8).sort((a,b)=>a.x-b.x);
+    for(const tick of ticks){
+      const text=axisText(tick.ma);
+      const w=approximateLabelWidth(text)+10;
+      const x=Math.max(w/2+7,Math.min(width-w/2-7,tick.x));
+      const rect={left:x-w/2,right:x+w/2};
+      if(placed.some(old=>rect.left<old.right+9 && rect.right>old.left-9))continue;
+      overlay.append(make('line',{x1:tick.x,y1:29,x2:tick.x,y2:37,class:'axis-fixed-tick'}));
+      const label=make('text',{x,y:21,'text-anchor':'middle',class:'axis-fixed-label'});
+      label.textContent=text;overlay.append(label);placed.push(rect);
+    }
+  }
+  let axisFrame=0;
+  function scheduleAxisOverlay(){
+    if(axisFrame)return;
+    axisFrame=requestAnimationFrame(()=>{axisFrame=0;drawAxisOverlay();});
+  }
+    function drawEvents(){
     const layer=$('eventLayer');layer.replaceChildren();
     if(!state.events)return;
     let previousLabelX=-Infinity;
@@ -422,8 +447,9 @@
     $('viewport').setAttribute('transform','translate('+state.tx+' '+state.ty+') scale('+state.zoom+')');
     $('graphStage').dataset.density=state.zoom<.32?'far':state.zoom<.58?'medium':'near';
     updateMinimapViewport();
+    scheduleAxisOverlay();
   }
-    function fit(showEntireTree=false){
+  function fit(showEntireTree=false){
     if(state.view!=='tree')return;
     const box=$('graphStage').getBoundingClientRect();
     if(box.width<10||box.height<10)return;
