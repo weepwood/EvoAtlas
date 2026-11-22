@@ -95,6 +95,22 @@
       state.parents.set(n.id,n.id===state.root?null:parent||null);
       state.visible.push(n);
     });
+    const total=new Map(),shown=new Map();
+    for(const n of candidates){
+      for(const ancestor of path(n.id)){
+        if(!candidateIds.has(ancestor.id))continue;
+        total.set(ancestor.id,(total.get(ancestor.id)||0)+1);
+        if(ancestor.id===state.root)break;
+      }
+    }
+    for(const n of state.visible){
+      for(const ancestor of path(n.id)){
+        if(!candidateIds.has(ancestor.id))continue;
+        shown.set(ancestor.id,(shown.get(ancestor.id)||0)+1);
+        if(ancestor.id===state.root)break;
+      }
+    }
+    state.hiddenById=new Map(state.visible.map(n=>[n.id,Math.max(0,(total.get(n.id)||1)-(shown.get(n.id)||1))]));
   }
   function xFor(ma){
     const left=65, right=215;
@@ -169,20 +185,45 @@
   }
   function drawGrid(){
     const layer=$('gridLayer');layer.replaceChildren();
-    const ticks=axisTicks(),placed=[];
-    for(const ma of ticks){
+    // World-space guides; their labels are instead rendered in a fixed ruler.
+    axisTicks().forEach(ma=>{
       const x=xFor(ma);
-      layer.append(make('line',{x1:x,y1:49,x2:x,y2:state.height-25,class:'grid-line'}));
-      const label=ma===0?'现在':ma>=1000?Number((ma/1000).toFixed(2))+' Ga':Number(ma.toFixed(1))+' Ma';
-      const estimated=label.length*7+12;
-      const left=x+3,right=left+estimated;
-      if(placed.some(p=>left<p.right+15&&right>p.left-15))continue;
-      placed.push({left,right});
-      layer.append(renderLabel(label,x+3,30));
-    }
-    layer.append(make('line',{x1:52,y1:49,x2:state.width-140,y2:49,class:'axis-line'}));
+      layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'grid-line'}));
+    });
   }
-  function drawEvents(){
+  function axisText(ma){
+    if(ma===0)return '现在';
+    if(ma>=1000)return Number((ma/1000).toFixed(2))+' Ga';
+    return Number(ma.toFixed(1))+' Ma';
+  }
+  function drawAxisOverlay(){
+    const overlay=$('axisOverlay');
+    const width=$('graphStage').clientWidth;
+    if(width<10)return;
+    overlay.setAttribute('viewBox','0 0 '+width+' 38');
+    overlay.replaceChildren();
+    const caption=make('text',{x:10,y:23,class:'axis-fixed-caption'});
+    caption.textContent='时间';overlay.append(caption);
+    const placed=[{left:0,right:57}];
+    const ticks=axisTicks().map(ma=>({ma,x:state.tx+xFor(ma)*state.zoom}))
+      .filter(t=>t.x>=8&&t.x<width-8).sort((a,b)=>a.x-b.x);
+    for(const tick of ticks){
+      const text=axisText(tick.ma);
+      const w=approximateLabelWidth(text)+10;
+      const x=Math.max(w/2+7,Math.min(width-w/2-7,tick.x));
+      const rect={left:x-w/2,right:x+w/2};
+      if(placed.some(old=>rect.left<old.right+9 && rect.right>old.left-9))continue;
+      overlay.append(make('line',{x1:tick.x,y1:29,x2:tick.x,y2:37,class:'axis-fixed-tick'}));
+      const label=make('text',{x,y:21,'text-anchor':'middle',class:'axis-fixed-label'});
+      label.textContent=text;overlay.append(label);placed.push(rect);
+    }
+  }
+  let axisFrame=0;
+  function scheduleAxisOverlay(){
+    if(axisFrame)return;
+    axisFrame=requestAnimationFrame(()=>{axisFrame=0;drawAxisOverlay();});
+  }
+    function drawEvents(){
     const layer=$('eventLayer');layer.replaceChildren();
     if(!state.events)return;
     let previousLabelX=-Infinity;
@@ -254,7 +295,7 @@
       const a=state.pos.get(parent),b=state.pos.get(n.id);if(!a||!b)return;
       const middle=a.x+Math.max(12,(b.x-a.x)*.38);
       const d='M '+a.x+' '+a.y+' H '+middle+' V '+b.y+' H '+b.x;
-      edges.append(make('path',{d,class:'edge'+(activePath.has(n.id)&&activePath.has(parent)?' active-path':'')}));
+      edges.append(make('path',{d,'data-child':n.id,class:'edge'+(activePath.has(n.id)&&activePath.has(parent)?' active-path':'')}));
     });
     const labels=chooseLabels();
     state.visible.forEach(n=>{
@@ -267,18 +308,147 @@
       const label=make('text',{class:'node-label',x:meta.dx,y:meta.dy,'text-anchor':meta.side==='right'?'start':'end',
         'dominant-baseline':'middle'});
       label.textContent=n.zh;
+      if(Math.abs(meta.dy)>=16){
+        node.append(make('path',{d:'M 0 0 L '+(meta.dx>0?7:-7)+' '+meta.dy,class:'node-label-guide'}));
+      }
       node.append(label);
-      node.addEventListener('click',e=>{e.stopPropagation();selectNode(n.id);});
-      node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectNode(n.id);}});
-      node.addEventListener('mouseenter',e=>showTip(e,n));
+      const hidden=state.hiddenById?.get(n.id)||0;
+      const hasChildren=(children.get(n.id)||[]).length>0;
+      if(state.detail==='overview' && n.id!==state.root && hidden>=3 && hasChildren){
+        const more=make('g',{class:'node-more','data-expand':n.id,role:'button',tabindex:0,
+          'aria-label':'聚焦'+n.zh+'，查看另外 '+hidden+' 个节点'});
+        const text=hidden>99?'99+':'+'+hidden;
+        const w=14+text.length*7.2;
+        more.append(make('rect',{x:9,y:18,width:w,height:18,rx:6}));
+        const countLabel=make('text',{x:9+w/2,y:30,'text-anchor':'middle'});
+        countLabel.textContent=text;more.append(countLabel);
+        more.addEventListener('click',event=>{event.stopPropagation();focusRoot(n.id);});
+        more.addEventListener('keydown',event=>{
+          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();focusRoot(n.id);}
+        });
+        node.append(more);
+      }
+      node.addEventListener('click',e=>{
+        e.stopPropagation();
+        const now=performance.now();
+        if(now<(state.suppressClickUntil||0))return;
+        const twice=state.lastNodeClick?.id===n.id && now-state.lastNodeClick.time<360;
+        if(twice && hasChildren){
+          state.lastNodeClick=null;
+          focusRoot(n.id);
+        }else{
+          state.lastNodeClick={id:n.id,time:now};
+          // A mouse click already points at a visible node: avoid recentering
+          // and replacing it under the cursor before the second click.
+          selectNode(n.id,{center:false});
+        }
+      });
+      node.addEventListener('keydown',e=>navigateNodeKeyboard(e,n.id));
+      node.addEventListener('mouseenter',e=>{highlightLineage(n.id);showTip(e,n);});
       node.addEventListener('mousemove',moveTip);
-      node.addEventListener('mouseleave',hideTip);
-      node.addEventListener('focus',()=>node.classList.add('keyboard-focus'));
-      node.addEventListener('blur',()=>node.classList.remove('keyboard-focus'));
+      node.addEventListener('mouseleave',()=>{highlightLineage(null);hideTip();});
+      node.addEventListener('focus',()=>{node.classList.add('keyboard-focus');highlightLineage(n.id);});
+      node.addEventListener('blur',()=>{node.classList.remove('keyboard-focus');highlightLineage(null);});
       nodes.append(node);
     });
   }
-  function applyTransform(){$('viewport').setAttribute('transform','translate('+state.tx+' '+state.ty+') scale('+state.zoom+')');}
+  function navigateNodeKeyboard(e,id){
+    if(e.key==='Enter'||e.key===' '){
+      e.preventDefault();e.stopPropagation();
+      if(e.shiftKey && (children.get(id)||[]).length)focusRoot(id);
+      else selectNode(id);
+      return;
+    }
+    if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;
+    e.preventDefault();e.stopPropagation();
+    const ids=new Set(state.visible.map(n=>n.id));
+    const siblings=state.visible.filter(n=>state.parents.get(n.id)===state.parents.get(id))
+      .sort((a,b)=>state.pos.get(a.id).y-state.pos.get(b.id).y);
+    let next=null;
+    if(e.key==='ArrowLeft')next=state.parents.get(id);
+    else if(e.key==='ArrowRight'){
+      next=(children.get(id)||[]).find(child=>ids.has(child));
+      if(!next && (children.get(id)||[]).length){focusRoot(id);next=id;}
+    }else{
+      const i=siblings.findIndex(n=>n.id===id);
+      if(i>=0)next=siblings[i+(e.key==='ArrowDown'?1:-1)]?.id;
+    }
+    if(next && byId.has(next)){
+      selectNode(next,{center:true,open:false});
+      $('nodeLayer').querySelector('[data-id="'+next+'"]')?.focus({preventScroll:true});
+    }
+  }
+  function highlightLineage(id){
+    const tree=$('treeSvg');
+    const ancestry=new Set(id?path(id).map(n=>n.id):[]);
+    tree.classList.toggle('has-hover',Boolean(id));
+    $('edgeLayer').querySelectorAll('[data-child]').forEach(el=>{
+      el.classList.toggle('hover-path',ancestry.has(el.dataset.child));
+    });
+    $('nodeLayer').querySelectorAll('.node').forEach(el=>{
+      el.classList.toggle('hover-lineage',ancestry.has(el.dataset.id));
+    });
+  }
+  const MINI_W=204,MINI_H=118,MINI_PAD=8;
+  function miniPoint(point){
+    return {x:MINI_PAD+point.x*(MINI_W-MINI_PAD*2)/Math.max(1,state.width),
+      y:MINI_PAD+point.y*(MINI_H-MINI_PAD*2)/Math.max(1,state.height)};
+  }
+  function drawMinimap(){
+    const edges=$('minimapEdges'),nodes=$('minimapNodes');
+    edges.replaceChildren();nodes.replaceChildren();
+    if(!state.pos.size)return;
+    for(const n of state.visible){
+      const point=miniPoint(state.pos.get(n.id));
+      const parent=state.parents.get(n.id);
+      if(parent && state.pos.has(parent)){
+        const from=miniPoint(state.pos.get(parent));
+        const middle=from.x+(point.x-from.x)*.35;
+        edges.append(make('path',{d:'M '+from.x+' '+from.y+' H '+middle+' V '+point.y+' H '+point.x}));
+      }
+      if(n.id===state.root || n.id===state.selected || (children.get(n.id)||[]).length>=5)
+        nodes.append(make('circle',{cx:point.x,cy:point.y,r:n.id===state.selected?2.8:1.6,
+          class:n.id===state.selected?'mini-selected':'mini-node'}));
+    }
+    updateMinimapViewport();
+  }
+  function updateMinimapViewport(){
+    if(!state.pos.size)return;
+    const box=$('graphStage').getBoundingClientRect();
+    if(box.width<10||box.height<10)return;
+    const scaleX=(MINI_W-MINI_PAD*2)/Math.max(1,state.width);
+    const scaleY=(MINI_H-MINI_PAD*2)/Math.max(1,state.height);
+    const worldLeft=-state.tx/state.zoom,worldTop=-state.ty/state.zoom;
+    const x=Math.max(MINI_PAD,Math.min(MINI_W-MINI_PAD,MINI_PAD+worldLeft*scaleX));
+    const y=Math.max(MINI_PAD,Math.min(MINI_H-MINI_PAD,MINI_PAD+worldTop*scaleY));
+    const right=Math.max(MINI_PAD,Math.min(MINI_W-MINI_PAD,
+      MINI_PAD+(worldLeft+box.width/state.zoom)*scaleX));
+    const bottom=Math.max(MINI_PAD,Math.min(MINI_H-MINI_PAD,
+      MINI_PAD+(worldTop+box.height/state.zoom)*scaleY));
+    const view=$('minimapViewport');
+    view.setAttribute('x',x);view.setAttribute('y',y);
+    view.setAttribute('width',Math.max(2,right-x));
+    view.setAttribute('height',Math.max(2,bottom-y));
+  }
+  function constrainTransform(){
+    const box=$('graphStage').getBoundingClientRect();
+    if(box.width<10||box.height<10)return;
+    const limit=(translation,worldLength,screenLength)=>{
+      const scaled=worldLength*state.zoom;
+      if(scaled<=screenLength)return (screenLength-scaled)/2;
+      const visibleStrip=Math.min(88,screenLength*.23);
+      return Math.max(visibleStrip-scaled,Math.min(screenLength-visibleStrip,translation));
+    };
+    state.tx=limit(state.tx,state.width,box.width);
+    state.ty=limit(state.ty,state.height,box.height);
+  }
+  function applyTransform(){
+    constrainTransform();
+    $('viewport').setAttribute('transform','translate('+state.tx+' '+state.ty+') scale('+state.zoom+')');
+    $('graphStage').dataset.density=state.zoom<.32?'far':state.zoom<.58?'medium':'near';
+    updateMinimapViewport();
+    scheduleAxisOverlay();
+  }
   function fit(showEntireTree=false){
     if(state.view!=='tree')return;
     const box=$('graphStage').getBoundingClientRect();
@@ -312,7 +482,7 @@
   function zoomAt(factor,cx,cy){
     const box=$('graphStage').getBoundingClientRect();
     const px=(cx??box.left+box.width/2)-box.left,py=(cy??box.top+box.height/2)-box.top;
-    const old=state.zoom,next=Math.max(.12,Math.min(4,old*factor));
+    const old=state.zoom,next=Math.max(.12,Math.min(5,old*factor));
     state.tx=px-(px-state.tx)*next/old;
     state.ty=py-(py-state.ty)*next/old;
     state.zoom=next;applyTransform();
@@ -344,12 +514,14 @@
     box.scrollLeft=box.scrollWidth;
   }
   function render(fitNow=false){
-    build();layout();drawGrid();drawEvents();drawTree();
+    $('treeSvg').classList.remove('has-hover');
+    hideTip();
+    build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
     $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
     const hint=$('graphStage').querySelector('.graph-overlay-hint');
     if(hint)hint.textContent=state.detail==='overview'&&state.visible.length<state.totalAvailable
-      ? '概览 '+state.visible.length+'/'+state.totalAvailable+' · 聚焦支系或搜索更多物种'
+      ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
       : '滚轮缩放 · 拖拽移动 · 点击类群查看';
     updateClades();updateHeaderBreadcrumb();
     if(fitNow)requestAnimationFrame(()=>fit());else applyTransform();
@@ -364,7 +536,8 @@
   }
   function showTip(e,n){
     const tip=$('tooltip');
-    tip.innerHTML='<strong>'+esc(n.zh)+'</strong><em>'+esc(n.latin)+'</em><small>'+esc(n.rank)+' · '+esc(nodeAge(n))+'</small>';
+    tip.innerHTML='<strong>'+esc(n.zh)+'</strong><em>'+esc(n.latin)+'</em><small>'+esc(n.rank)+' · '+esc(nodeAge(n))+'</small>'+
+      ((children.get(n.id)||[]).length?'<small>双击可聚焦此支系</small>':'');
     tip.hidden=false;moveTip(e);
   }
   function syncUrl(){
@@ -617,18 +790,128 @@
     $('zoomOut').addEventListener('click',()=>zoomAt(1/1.2));
     $('fitTree').addEventListener('click',()=>fit(true));
     const stage=$('graphStage');
-    stage.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.deltaY<0?1.12:1/1.12,e.clientX,e.clientY);},{passive:false});
+    stage.addEventListener('wheel',e=>{
+      if(state.view!=='tree')return;
+      e.preventDefault();
+      // Smooth trackpads should have proportional zoom, not the same jump as a
+      // traditional wheel notch. Clamp to avoid abrupt jumps on high delta.
+      const factor=Math.max(.84,Math.min(1.2,Math.exp(-e.deltaY*.00145)));
+      zoomAt(factor,e.clientX,e.clientY);
+    },{passive:false});
+
+    const pointers=new Map();
+    let pinch=null;
+    const pinchBegin=()=>{
+      const points=[...pointers.values()];
+      if(points.length<2)return;
+      const box=stage.getBoundingClientRect();
+      const cx=(points[0].x+points[1].x)/2-box.left;
+      const cy=(points[0].y+points[1].y)/2-box.top;
+      pinch={distance:Math.max(5,Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)),
+        zoom:state.zoom,wx:(cx-state.tx)/state.zoom,wy:(cy-state.ty)/state.zoom};
+      state.drag=null;
+    };
     stage.addEventListener('pointerdown',e=>{
-      if(e.button!==0||e.target.closest('.node'))return;
-      state.drag={pointer:e.pointerId,x:e.clientX,y:e.clientY,tx:state.tx,ty:state.ty};
-      stage.classList.add('dragging');stage.setPointerCapture(e.pointerId);
+      if(e.button!==0 && e.pointerType!=='touch')return;
+      if(e.pointerType!=='touch'&&e.target.closest('.node'))return;
+      pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY});
+      if(pointers.size===1){
+        state.drag={pointer:e.pointerId,x:e.clientX,y:e.clientY,tx:state.tx,ty:state.ty};
+        // Capturing the first tap on a node would steal its click. For touch
+        // nodes capture only after a real move begins.
+        if(!e.target.closest('.node'))stage.setPointerCapture(e.pointerId);
+      }else if(pointers.size===2){
+        pinchBegin();
+        stage.classList.add('dragging');
+        stage.setPointerCapture(e.pointerId);
+      }
     });
     stage.addEventListener('pointermove',e=>{
+      const pointer=pointers.get(e.pointerId);
+      if(!pointer)return;
+      pointer.x=e.clientX;pointer.y=e.clientY;
+      if(pointers.size>=2){
+        if(!pinch)pinchBegin();
+        const points=[...pointers.values()];
+        const box=stage.getBoundingClientRect();
+        const cx=(points[0].x+points[1].x)/2-box.left;
+        const cy=(points[0].y+points[1].y)/2-box.top;
+        const distance=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);
+        state.zoom=Math.max(.12,Math.min(5,pinch.zoom*distance/pinch.distance));
+        state.tx=cx-pinch.wx*state.zoom;
+        state.ty=cy-pinch.wy*state.zoom;
+        state.suppressClickUntil=performance.now()+280;
+        applyTransform();e.preventDefault();return;
+      }
       if(!state.drag||state.drag.pointer!==e.pointerId)return;
-      state.tx=state.drag.tx+e.clientX-state.drag.x;state.ty=state.drag.ty+e.clientY-state.drag.y;applyTransform();
+      const dx=e.clientX-state.drag.x,dy=e.clientY-state.drag.y;
+      if(Math.hypot(dx,dy)>=4){
+        stage.classList.add('dragging');
+        state.suppressClickUntil=performance.now()+280;
+        if(!stage.hasPointerCapture(e.pointerId))stage.setPointerCapture(e.pointerId);
+      }
+      if(stage.classList.contains('dragging')){
+        state.tx=state.drag.tx+dx;state.ty=state.drag.ty+dy;
+        applyTransform();e.preventDefault();
+      }
     });
-    const endDrag=e=>{if(!state.drag||state.drag.pointer!==e.pointerId)return;state.drag=null;stage.classList.remove('dragging');if(stage.hasPointerCapture(e.pointerId))stage.releasePointerCapture(e.pointerId);};
-    stage.addEventListener('pointerup',endDrag);stage.addEventListener('pointercancel',endDrag);
+    const endDrag=e=>{
+      if(!pointers.has(e.pointerId))return;
+      pointers.delete(e.pointerId);
+      if(stage.hasPointerCapture(e.pointerId))stage.releasePointerCapture(e.pointerId);
+      if(pointers.size===1){
+        const [id,p]=[...pointers.entries()][0];
+        state.drag={pointer:id,x:p.x,y:p.y,tx:state.tx,ty:state.ty};
+        pinch=null;
+      }else if(!pointers.size){
+        state.drag=null;pinch=null;stage.classList.remove('dragging');
+      }
+    };
+    stage.addEventListener('pointerup',endDrag);
+    stage.addEventListener('pointercancel',endDrag);
+    stage.addEventListener('lostpointercapture',e=>{
+      // Ending a gesture outside the viewer must never strand dragging state.
+      if(pointers.has(e.pointerId))endDrag(e);
+    });
+
+    const minimap=$('graphMinimap'),minimapSvg=$('graphMinimapSvg');
+    const gotoMiniPoint=(clientX,clientY)=>{
+      const bounds=minimapSvg.getBoundingClientRect();
+      const x=(clientX-bounds.left)/bounds.width*MINI_W;
+      const y=(clientY-bounds.top)/bounds.height*MINI_H;
+      const wx=(x-MINI_PAD)/(MINI_W-2*MINI_PAD)*state.width;
+      const wy=(y-MINI_PAD)/(MINI_H-2*MINI_PAD)*state.height;
+      const box=stage.getBoundingClientRect();
+      state.tx=box.width/2-wx*state.zoom;
+      state.ty=box.height/2-wy*state.zoom;
+      applyTransform();
+    };
+    let miniPointer=null;
+    minimap.addEventListener('pointerdown',e=>{
+      if(e.button!==0&&e.pointerType!=='touch')return;
+      e.preventDefault();e.stopPropagation();
+      miniPointer=e.pointerId;minimap.setPointerCapture(e.pointerId);
+      gotoMiniPoint(e.clientX,e.clientY);
+    });
+    minimap.addEventListener('pointermove',e=>{
+      if(miniPointer!==e.pointerId)return;
+      e.preventDefault();e.stopPropagation();
+      gotoMiniPoint(e.clientX,e.clientY);
+    });
+    const miniEnd=e=>{
+      if(miniPointer!==e.pointerId)return;
+      miniPointer=null;e.stopPropagation();
+      if(minimap.hasPointerCapture(e.pointerId))minimap.releasePointerCapture(e.pointerId);
+    };
+    minimap.addEventListener('pointerup',miniEnd);
+    minimap.addEventListener('pointercancel',miniEnd);
+    minimap.addEventListener('keydown',e=>{
+      const dx=e.key==='ArrowRight'?-75:e.key==='ArrowLeft'?75:0;
+      const dy=e.key==='ArrowDown'?-75:e.key==='ArrowUp'?75:0;
+      if(dx||dy){e.preventDefault();e.stopPropagation();state.tx+=dx;state.ty+=dy;applyTransform();}
+      else if(e.key==='Home'){e.preventDefault();fit(true);}
+    });
+
     $('speciesA').addEventListener('change',compare);
     $('speciesB').addEventListener('change',compare);
     $('runCompare').addEventListener('click',compare);

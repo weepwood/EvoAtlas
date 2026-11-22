@@ -40,10 +40,15 @@ async function main(){
     assert.equal(await page.locator('#graphStage').getAttribute('data-scale'),'linear');
 
     // Grid labels must not stack at the same horizontal position after a scale switch.
-    const grid=await page.locator('#gridLayer .axis-label').evaluateAll(nodes=>
+    await page.waitForSelector('#axisOverlay .axis-fixed-label');
+    const grid=await page.locator('#axisOverlay .axis-fixed-label').evaluateAll(nodes=>
       nodes.map(el=>({x:Number(el.getAttribute('x')),text:el.textContent})));
-    assert.ok(grid.length>=2,'linear mode must retain time labels');
+    assert.ok(grid.length>=2,'linear mode must retain readable fixed time labels');
     assert.ok(grid.every(item=>Number.isFinite(item.x)),'grid positions must be finite');
+    const fixedAxisTop=await page.locator('#axisOverlay').evaluate(el=>el.getBoundingClientRect().top);
+    await page.locator('#graphMinimap').click({position:{x:45,y:72}});
+    assert.ok(Math.abs((await page.locator('#axisOverlay').evaluate(el=>el.getBoundingClientRect().top))-fixedAxisTop)<1,
+      'ruler must not move vertically with the world tree');
 
     await page.locator('[data-select="detailSelect"] .custom-select-trigger').click();
     await page.keyboard.press('Escape');
@@ -75,6 +80,32 @@ async function main(){
     await page.locator('[data-root="mammalia"]').click();
     const overviewCount=await page.locator('#nodeLayer .node').count();
     assert.ok(overviewCount>15 && overviewCount<=70,'overview needs capped LOD');
+    assert.ok(await page.locator('#graphMinimap').isVisible(),'overview must have a navigation minimap');
+    assert.ok(await page.locator('#minimapEdges path').count()>10,'minimap should reflect branch topology');
+    const viewportRect=page.locator('#minimapViewport');
+    const vw=Number(await viewportRect.getAttribute('width'));
+    assert.ok(vw>1 && vw<=204,'minimap viewport must be bounded');
+    const branchBadges=page.locator('#nodeLayer .node-more');
+    assert.ok(await branchBadges.count()>0,'collapsed overview should disclose hidden descendants');
+    const selectedBefore=await page.locator('#viewport').getAttribute('transform');
+    await page.locator('#graphMinimap').click({position:{x:175,y:55}});
+    const selectedAfter=await page.locator('#viewport').getAttribute('transform');
+    assert.notEqual(selectedAfter,selectedBefore,'clicking minimap should relocate the viewport');
+    const mobileHint=await page.locator('.graph-overlay-hint').innerText();
+    assert.match(mobileHint,/双击或点/);
+    await page.locator('#fitTree').click();
+    assert.ok(Number(await viewportRect.getAttribute('width'))>1);
+    // A focused SVG node supports keyboard lineage traversal.
+    const rootNode=page.locator('#nodeLayer .node[data-id="mammalia"]');
+    await rootNode.focus();
+    await page.keyboard.press('ArrowRight');
+    assert.ok(await page.locator('#taxonDetail').isVisible(),'arrow-key node traversal should show details');
+    await page.locator('[data-root="mammalia"]').click();
+    const repeatedClick=page.locator('#nodeLayer .node[data-id="carnivora"]');
+    await repeatedClick.dispatchEvent('click');
+    await repeatedClick.dispatchEvent('click');
+    assert.match(await page.locator('#headerBreadcrumb').innerText(),/食肉目/);
+    await page.locator('[data-root="mammalia"]').click();
     const desktopTransform=await page.locator('#viewport').getAttribute('transform');
     const desktopScale=Number(desktopTransform.match(/scale\(([-\d.]+)\)/)?.[1]||0);
     assert.ok(desktopScale>=0.74,'dense desktop overview should not render text as a thumbnail');
@@ -87,6 +118,8 @@ async function main(){
     await page.waitForTimeout(300);
     assert.ok(await page.locator('[data-view="tree"]').evaluate(el=>el.classList.contains('active')));
     await page.screenshot({path:'artifacts/evoatlas-tree-desktop.png'});
+    await page.locator('#fitTree').click();
+    await page.screenshot({path:'artifacts/evoatlas-overview-fit.png'});
 
     await page.setViewportSize({width:390,height:844});
     await page.waitForTimeout(350);
