@@ -2,8 +2,8 @@
 
 状态：**可测试的隔离原型（尚未接入网页）**  
 设计日期：2026-11-23  
-源码：\`layout/engine.js\`  
-契约测试：\`tests/layout-engine.test.cjs\`
+源码：`layout/engine.js`  
+契约测试：`tests/layout-engine.test.cjs`
 
 ## 0. 目标及非目标
 
@@ -22,13 +22,13 @@ EvoAtlas 当前有 608 个节点、496 个物种。此次主要解决的是**高
 
 ## 1. 当前问题定位
 
-现有 \`app.js\`：
+现有 `app.js`：
 
-- \`build()\`：概览采用固定预算（大屏约 58、小屏约 34）广度抽样，隐藏部分节点时会寻找最近的**可见祖先**作为展示父节点。这种展示捷径需要在未来标记“路径被压缩”，不能默认为真实的直接演化联系。
-- \`layout()\`：叶节点依次按固定间隔排列，再用第一个和最后一个子节点的纵向中点放置父节点。无法考虑不同子树在相邻深度上的轮廓。
-- \`drawTree()\`：对每一对父子节点都绘制完整折线路径（横 → 竖 → 横），多叉处的竖线反复叠加。
-- \`chooseLabels()\`：用固定文字宽度估计与候选位置试探修补重叠，但当横向坐标集中、兄弟节点过多时无法从根源解决。
-- 既有 \`ageMa\` 为教学近似；不能为了看起来紧凑，任意移动时间模式中代表年龄的横向位置。
+- `build()`：概览采用固定预算（大屏约 58、小屏约 34）广度抽样，隐藏部分节点时会寻找最近的**可见祖先**作为展示父节点。这种展示捷径需要在未来标记“路径被压缩”，不能默认为真实的直接演化联系。
+- `layout()`：叶节点依次按固定间隔排列，再用第一个和最后一个子节点的纵向中点放置父节点。无法考虑不同子树在相邻深度上的轮廓。
+- `drawTree()`：对每一对父子节点都绘制完整折线路径（横 → 竖 → 横），多叉处的竖线反复叠加。
+- `chooseLabels()`：用固定文字宽度估计与候选位置试探修补重叠，但当横向坐标集中、兄弟节点过多时无法从根源解决。
+- 既有 `ageMa` 为教学近似；不能为了看起来紧凑，任意移动时间模式中代表年龄的横向位置。
 
 按现有数据计算的直接子节点数：
 
@@ -44,7 +44,7 @@ EvoAtlas 当前有 608 个节点、496 个物种。此次主要解决的是**高
 
 ## 2. 设计分层
 
-\`\`\`text
+```text
 Canonical Taxonomy（不可修改的物种与分类原始数据）
           |
           v
@@ -72,7 +72,7 @@ Presentation Geometry（后处理）
   ├─ 屏幕空间标签碰撞检测和 LOD
   ├─ 缩放和视口保留 / 动画
   └─ SVG 当前，未来可接 Canvas
-\`\`\`
+```
 
 **关键原则：原始系统发育关系是数据，图谱折叠与屏幕位置只是状态。**
 
@@ -80,21 +80,21 @@ Presentation Geometry（后处理）
 
 过去一名父节点有 10 个孩子，就画 10 条分别包含竖线的路径。新的几何契约：
 
-\`\`\`text
+```text
 父节点 ●──┬──────────────● 子节点 1
           ├──────────────● 子节点 2
           ├──────────────● 子节点 3
           ├──────────────● 子节点 4
           └──────────────● 子节点 5
-\`\`\`
+```
 
-对于父节点 \`p\`、子节点集合 \`c1…cn\`，父节点在时间轴（或结构层级轴）上的横坐标 \`x(p)\`：
+对于父节点 `p`、子节点集合 `c1…cn`，父节点在时间轴（或结构层级轴）上的横坐标 `x(p)`：
 
-- \`n > 1\`：仅生成 **一个** \`stem\`：\`x1=x2=x(p), y1=min(y(ci)), y2=max(y(ci))\`。
-- 每个孩子生成 **一个** \`arm\`：从 \`(x(p),y(ci))\` 连接到 \`(x(ci),y(ci))\`。
-- \`n = 1\`：仅需要一条水平连接；如果以后有不同 y 的特殊节点，才额外生成单一竖线。
-- \`n = 0\`：不生成连接。
-- 所有形状均使用**实际父节点的坐标**；绝不生成有新的 \`ageMa\` 的虚拟分叉点。
+- `n > 1`：仅生成 **一个** `stem`：`x1=x2=x(p), y1=min(y(ci)), y2=max(y(ci))`。
+- 每个孩子生成 **一个** `arm`：从 `(x(p),y(ci))` 连接到 `(x(ci),y(ci))`。
+- `n = 1`：仅需要一条水平连接；如果以后有不同 y 的特殊节点，才额外生成单一竖线。
+- `n = 0`：不生成连接。
+- 所有形状均使用**实际父节点的坐标**；绝不生成有新的 `ageMa` 的虚拟分叉点。
 
 注意：直系父子连接超过 2 个，并不证明该类群发生真实的同期多路分化。对当前缺乏完整中间分类级别的教学数据，只表示**尚未充分细化的关系**，不应标记为“已证实的生物学多分叉”。
 
@@ -104,7 +104,7 @@ Presentation Geometry（后处理）
 
 原型按下列步骤：
 
-1. 叶节点初始 \`y=0\`，给它分配基于文字高度的上下轮廓。
+1. 叶节点初始 `y=0`，给它分配基于文字高度的上下轮廓。
 2. 自底向上计算每个子树的同深度上下边界。
 3. 将下一个兄弟子树整体纵向移动，确保它的上轮廓与之前兄弟子树的下轮廓之间有足够的空间。
 4. 单个父节点放在第一个和最后一个子节点纵坐标的中点。
@@ -116,22 +116,22 @@ Presentation Geometry（后处理）
 
 ## 5. 横向：两种语义必须分开
 
-### 结构模式 \`mode=structure\`
+### 结构模式 `mode=structure`
 
-\`\`\`text
+```text
 x(node) = leftMargin + node.depth * depthStep
-\`\`\`
+```
 
-只表达父子层级。不使用 \`Ma\` 时间刻度，避免暗示节点分化时间已经确认。最适合逐层阅读、查看多个直接兄弟支系。
+只表达父子层级。不使用 `Ma` 时间刻度，避免暗示节点分化时间已经确认。最适合逐层阅读、查看多个直接兄弟支系。
 
-### 教学时间模式 \`mode=time\`
+### 教学时间模式 `mode=time`
 
-给定范围 \`T=max(ageMa)\`、画布可用宽度 \`W\`：
+给定范围 `T=max(ageMa)`、画布可用宽度 `W`：
 
-- 线性：\`x=leftMargin + W*(1-age/T)\`
-- 对数：\`x=leftMargin + W*(1-log10(age+1)/log10(T+1))\`
+- 线性：`x=leftMargin + W*(1-age/T)`
+- 对数：`x=leftMargin + W*(1-log10(age+1)/log10(T+1))`
 
-现生物种统一在 \`0 Ma\` 的“现在”端；现有化石节点沿用项目的 lastMa 表现规则。这里的 \`ageMa\` 仍然是教学示意，不可称为已核验的 molecular-clock divergence estimate。
+现生物种统一在 `0 Ma` 的“现在”端；现有化石节点沿用项目的 lastMa 表现规则。这里的 `ageMa` 仍然是教学示意，不可称为已核验的 molecular-clock divergence estimate。
 
 两个模式之间只有 x 语义变化，y 与有序的亲缘关系不因切换而改变。**不能把结构模式的 level 投影混同为地质时间**。
 
@@ -141,11 +141,11 @@ x(node) = leftMargin + node.depth * depthStep
 
 | 状态 | 语义 | 视觉 |
 | --- | --- | --- |
-| \`expanded\` | 当前节点的真实直接孩子全部显示 | 共享主干 + arms |
-| \`collapsed\` | 真实支系隐藏了完整后代 | 一条摘要标记，标注隐藏数量 |
-| \`overflow\`（仅展示层） | 当前视野无法容纳所有并列孩子 | “其余 N 个展示项”，明确**不是分类节点** |
+| `expanded` | 当前节点的真实直接孩子全部显示 | 共享主干 + arms |
+| `collapsed` | 真实支系隐藏了完整后代 | 一条摘要标记，标注隐藏数量 |
+| `overflow`（仅展示层） | 当前视野无法容纳所有并列孩子 | “其余 N 个展示项”，明确**不是分类节点** |
 
-当前原型只实现显式 \`collapsedIds\`，返回 \`hiddenDescendants\`。不会生成 overflow 的新 ID。因为 “23 个直接孩子”不等于“23 个可合法重组的分支”，任何 overflow 列表都必须保留真实的 parentId，并允许按真实名称检索。
+当前原型只实现显式 `collapsedIds`，返回 `hiddenDescendants`。不会生成 overflow 的新 ID。因为 “23 个直接孩子”不等于“23 个可合法重组的分支”，任何 overflow 列表都必须保留真实的 parentId，并允许按真实名称检索。
 
 下一轮 UI 可实现：
 - 点击父节点旁折叠按钮，展开本地分支而不是让整张图谱切换根节点；
@@ -156,18 +156,18 @@ x(node) = leftMargin + node.depth * depthStep
 
 引擎只计算世界坐标，不把字号、碰撞或缩放事件写进系统发育逻辑。
 
-- 标签根据最终 viewport 计算文字真实宽度（SVG \`getBBox()\` / Canvas \`measureText()\`），而不是完全依赖固定字宽；
+- 标签根据最终 viewport 计算文字真实宽度（SVG `getBBox()` / Canvas `measureText()`），而不是完全依赖固定字宽；
 - 低 zoom：只显示重要支系 / 选中节点；高 zoom：开放物种末端文字；
 - 高频缩放中可使用上一帧标签布局，停止缩放后增量计算，避免频繁 DOM 测量；
 - 文字位置变更不能移动节点的时间 x 或改变拓扑；
 - 用户按住缩放或展开时保持锚点世界坐标：
-  \`tx' = anchorScreenX - anchorWorldX * nextZoom\`
-  \`ty' = anchorScreenY - anchorWorldY * nextZoom\`；
-- 动画通过 ID 建立 \`oldPosition → newPosition\`，支持中断与 prefers-reduced-motion。
+  `tx' = anchorScreenX - anchorWorldX * nextZoom`
+  `ty' = anchorScreenY - anchorWorldY * nextZoom`；
+- 动画通过 ID 建立 `oldPosition → newPosition`，支持中断与 prefers-reduced-motion。
 
 ## 8. 纯函数原型的输入与输出契约
 
-\`\`\`js
+```js
 const layout=EvoLayoutEngine.layoutTree(window.EVO_TAXA,{
   rootId:'actinopterygii',
   mode:'structure',          // or 'time'
@@ -187,31 +187,31 @@ const layout=EvoLayoutEngine.layoutTree(window.EVO_TAXA,{
 //  {kind:'arm',ownerId,childId,x1,y1,x2,y2}]
 //
 // layout.bounds / layout.axis / layout.stats
-\`\`\`
+```
 
-\`stem\` 是**绘制图元**，不是数据库祖先或演化时间；\`childIds\` 永远对应真实节点标识。
+`stem` 是**绘制图元**，不是数据库祖先或演化时间；`childIds` 永远对应真实节点标识。
 
 ## 9. 与当前 app.js 的迁移路线
 
 ### 阶段 A（本 PR）：不触碰线上渲染器
 
-- 加入纯函数原型 \`layout/engine.js\`。
+- 加入纯函数原型 `layout/engine.js`。
 - 用原有 608 条数据构建结构、时间、折叠场景。
-- 在 CI 中运行 \`node --test tests/layout-engine.test.cjs\`。
-- 提交设计规范与非目标，不修改原有 \`app.js\`。
+- 在 CI 中运行 `node --test tests/layout-engine.test.cjs`。
+- 提交设计规范与非目标，不修改原有 `app.js`。
 
 ### 阶段 B：一比一接线与开关
 
-- 在 \`index.html\` 按 \`data/species.js\` 之后加载 \`layout/engine.js\`。
-- 将现有 \`build()\` 显示投影、\`layout()\` 几何计算拆成单独模块。
-- 将引擎 \`nodes\` 适配成现有 \`state.visible / state.pos / state.parents\`，暂不改搜索、详情、比较。
-- 将 \`drawTree()\` 使用 \`segments\` 绘制共享主干，并保留 active/hover 路径样式。
+- 在 `index.html` 按 `data/species.js` 之后加载 `layout/engine.js`。
+- 将现有 `build()` 显示投影、`layout()` 几何计算拆成单独模块。
+- 将引擎 `nodes` 适配成现有 `state.visible / state.pos / state.parents`，暂不改搜索、详情、比较。
+- 将 `drawTree()` 使用 `segments` 绘制共享主干，并保留 active/hover 路径样式。
 - 临时用特性开关在浏览器对比旧/新引擎的同一个根节点与 zoom。
 - 为静态 Pages 构建清单添加脚本文件，防止仅开发环境生效。
 
 ### 阶段 C：本地展开与可读性
 
-- \`collapsedIds\` 保存到独立的 \`treeViewState\`，支持节点内局部展开。
+- `collapsedIds` 保存到独立的 `treeViewState`，支持节点内局部展开。
 - 对超出屏幕高度的部分分支，优先视口裁剪、标签 LOD；大数据才引入 Canvas/Worker。
 - 尽量复用现有小地图、固定时间轴和指针锚点缩放。
 - 提供视觉回归图片、拖拽/缩放中 FPS 与 DOM 节点数量基线。
