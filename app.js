@@ -602,8 +602,16 @@
       applyTheme();
     });
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(state.theme==='system')applyTheme();});
-    if('ResizeObserver' in window)new ResizeObserver(()=>{if(state.view==='tree')fit();}).observe(stage);
-    else window.addEventListener('resize',fit);
+    // Resize is a layout change, not just a transform change: recompute
+    // available horizontal width and vertical leaf spacing before fitting.
+    let resizeScheduled=false;
+    const onStageResize=()=>{
+      if(state.view!=='tree'||resizeScheduled)return;
+      resizeScheduled=true;
+      requestAnimationFrame(()=>{resizeScheduled=false;render(true);});
+    };
+    if('ResizeObserver' in window)new ResizeObserver(onStageResize).observe(stage);
+    else window.addEventListener('resize',onStageResize);
     window.addEventListener('hashchange',readHash);
   }
   function readHash(){
