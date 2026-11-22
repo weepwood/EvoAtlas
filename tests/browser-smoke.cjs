@@ -57,14 +57,19 @@ async function main(){
     await page.screenshot({path:'artifacts/evoatlas-sources-desktop.png',fullPage:true});
 
     await page.locator('[data-view="tree"]').click();
+    await page.mouse.move(780,650);
+    await page.waitForTimeout(300);
+    assert.ok(await page.locator('[data-view="tree"]').evaluate(el=>el.classList.contains('active')));
     await page.screenshot({path:'artifacts/evoatlas-tree-desktop.png'});
 
     await page.setViewportSize({width:390,height:844});
+    await page.waitForTimeout(350);
     await page.locator('#openSidebar').click();
     assert.ok(await page.locator('#sidebar').evaluate(el=>el.classList.contains('open')));
     await page.locator('[data-root="hominina"]').click();
     assert.match(await page.locator('#headerBreadcrumb').innerText(),/人亚族/);
     assert.equal(await page.locator('#sidebar').evaluate(el=>el.classList.contains('open')),false);
+    await page.waitForTimeout(350);
     await page.screenshot({path:'artifacts/evoatlas-tree-mobile.png'});
 
     assert.deepEqual(issues,[],'page should have no uncaught JavaScript errors');
