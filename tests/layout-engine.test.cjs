@@ -98,7 +98,9 @@ test('collapse is an explicit visualization choice, never a synthetic phylogenet
     assert.ok(nodes.get(id).hiddenDescendants>0);
     assert.equal(nodes.get(id).childIds.length,0);
   }
-  assert.deepEqual(new Set(collapsed.nodes.map(n=>n.id)).difference?.(new Set(taxa.map(n=>n.id)))||new Set(),new Set());
+  const canonicalIds=new Set(taxa.map(n=>n.id));
+  assert.ok(collapsed.nodes.every(n=>canonicalIds.has(n.id)),
+    'collapsed view must never add synthetic taxon nodes');
   assert.equal(JSON.stringify(taxa),original);
 });
 
