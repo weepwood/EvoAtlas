@@ -58,7 +58,7 @@ ruminantia|cetartiodactyla|反刍亚目|Ruminantia|亚目|50|mammal
 cyanobacteriota|念珠藻|Nostoc commune
 cyanobacteriota|铜绿微囊藻|Microcystis aeruginosa
 cyanobacteriota|海洋原绿球藻|Prochlorococcus marinus
-cyanobacteriota|集胞藻 PCC 7942|Synechococcus elongatus
+cyanobacteriota|细长聚球藻|Synechococcus elongatus
 cyanobacteriota|多变鱼腥藻|Anabaena variabilis
 pseudomonadota|肠炎沙门氏菌|Salmonella enterica
 pseudomonadota|霍乱弧菌|Vibrio cholerae
@@ -94,7 +94,7 @@ ascomycota|羊肚菌|Morchella esculenta
 ascomycota|尖孢镰刀菌|Fusarium oxysporum
 ascomycota|麦角菌|Claviceps purpurea
 ascomycota|里氏木霉|Trichoderma reesei
-ascomycota|巴斯德毕赤酵母（旧称）|Saccharomyces paradoxus
+ascomycota|奇异酿酒酵母|Saccharomyces paradoxus
 ascomycota|粪生粪壳菌|Sordaria fimicola
 ascomycota|灰葡萄孢|Botrytis cinerea
 ascomycota|蛹虫草|Cordyceps militaris
