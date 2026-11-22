@@ -396,13 +396,20 @@
   function showDetail(n){
     $('emptyDetail').hidden=true;$('taxonDetail').hidden=false;
     const kind=n.status==='extinct'?'化石 / 灭绝类群':n.status==='extant'?'现生物种':'支系或示意分叉';
-    $('detailRank').textContent=n.rank+'  ·  '+kind;
+    $('detailRank').textContent=n.rank+'  ·  '+kind+(n.evidenceState==='pending-review'?' · 名称待核验':'');
     $('detailName').textContent=n.zh;
     $('detailLatin').textContent=n.latin;
     $('detailSummary').textContent=n.summary;
     $('detailAge').textContent=nodeAge(n);
     $('detailStatus').textContent=n.status==='extinct'?'灭绝':n.status==='extant'?'现生':'内部支系';
-    $('traitList').replaceChildren(...(n.traits||[]).map(s=>{const el=document.createElement('span');el.textContent=s;return el;}));
+    const recordedTraits=n.traits||[];
+    $('traitList').replaceChildren(...recordedTraits.map(trait=>{const el=document.createElement('span');el.textContent=trait;return el;}));
+    if(!recordedTraits.length){
+      const note=document.createElement('span');
+      note.className='unverified-trait-note';
+      note.textContent='尚无逐种核验的性状记录';
+      $('traitList').append(note);
+    }
     const lineage=$('lineage');lineage.replaceChildren();
     path(n.id).reverse().forEach((member,i)=>{
       if(i){const sep=document.createElement('i');sep.textContent='›';lineage.append(sep);}
