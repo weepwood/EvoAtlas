@@ -31,9 +31,23 @@ for src in re.findall(r'<link\s+rel="stylesheet"\s+href="([^"]+)"', html):
     if not file.is_file():
         errors.append(f"missing stylesheet: {src}")
 
-for selector in ['treeView', 'compareView', 'sources', 'graphStage', 'detailPanel']:
+for selector in ['treeView', 'compareView', 'sources', 'graphStage', 'detailPanel', 'headerBreadcrumb']:
     if selector not in unique:
         errors.append(f"missing essential UI target: {selector}")
+
+# The canvas must be immediately inside the active tree view, not below a hero.
+if 'class="workspace-heading"' in html or 'id="graphTitle"' in html:
+    errors.append("legacy title/hero still occupies tree viewport")
+if 'id="exploreHuman"' in html:
+    errors.append("legacy human promotion control still present")
+if 'ui/custom-select.js' not in html:
+    errors.append("custom-select script missing from HTML")
+if 'EvoSelect?.enhanceAll()' not in js:
+    errors.append("custom selects are not initialized")
+if 'function chooseLabels()' not in js or 'function axisTicks()' not in js:
+    errors.append("tree labels or linear time-axis layout is not implemented")
+if '.graph-stage' not in (ROOT / 'styles.css').read_text(encoding='utf-8'):
+    errors.append("tree canvas styles are missing")
 
 print(f"HTML IDs: {len(unique)}")
 print(f"JS referenced IDs: {len(referenced)}")
