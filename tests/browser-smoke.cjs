@@ -70,6 +70,9 @@ async function main(){
     assert.match(await page.locator('#headerBreadcrumb').innerText(),/人亚族/);
     assert.equal(await page.locator('#sidebar').evaluate(el=>el.classList.contains('open')),false);
     await page.waitForTimeout(350);
+    const transform=await page.locator('#viewport').getAttribute('transform');
+    const zoomMatch=transform.match(/scale\\(([-\\d.]+)\\)/);
+    assert.ok(zoomMatch&&Number(zoomMatch[1])>=0.75,'mobile default zoom must preserve label readability');
     await page.screenshot({path:'artifacts/evoatlas-tree-mobile.png'});
 
     assert.deepEqual(issues,[],'page should have no uncaught JavaScript errors');
