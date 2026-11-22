@@ -305,11 +305,18 @@
       }
       node.addEventListener('click',e=>{
         e.stopPropagation();
-        if(performance.now()<(state.suppressClickUntil||0))return;
-        selectNode(n.id);
-      });
-      node.addEventListener('dblclick',e=>{
-        if(hasChildren){e.preventDefault();e.stopPropagation();focusRoot(n.id);}
+        const now=performance.now();
+        if(now<(state.suppressClickUntil||0))return;
+        const twice=state.lastNodeClick?.id===n.id && now-state.lastNodeClick.time<360;
+        if(twice && hasChildren){
+          state.lastNodeClick=null;
+          focusRoot(n.id);
+        }else{
+          state.lastNodeClick={id:n.id,time:now};
+          // A mouse click already points at a visible node: avoid recentering
+          // and replacing it under the cursor before the second click.
+          selectNode(n.id,{center:false});
+        }
       });
       node.addEventListener('keydown',e=>navigateNodeKeyboard(e,n.id));
       node.addEventListener('mouseenter',e=>{highlightLineage(n.id);showTip(e,n);});
