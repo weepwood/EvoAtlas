@@ -303,7 +303,11 @@
         });
         node.append(more);
       }
-      node.addEventListener('click',e=>{e.stopPropagation();selectNode(n.id);});
+      node.addEventListener('click',e=>{
+        e.stopPropagation();
+        if(performance.now()<(state.suppressClickUntil||0))return;
+        selectNode(n.id);
+      });
       node.addEventListener('dblclick',e=>{
         if(hasChildren){e.preventDefault();e.stopPropagation();focusRoot(n.id);}
       });
@@ -750,18 +754,128 @@
     $('zoomOut').addEventListener('click',()=>zoomAt(1/1.2));
     $('fitTree').addEventListener('click',()=>fit(true));
     const stage=$('graphStage');
-    stage.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.deltaY<0?1.12:1/1.12,e.clientX,e.clientY);},{passive:false});
+    stage.addEventListener('wheel',e=>{
+      if(state.view!=='tree')return;
+      e.preventDefault();
+      // Smooth trackpads should have proportional zoom, not the same jump as a
+      // traditional wheel notch. Clamp to avoid abrupt jumps on high delta.
+      const factor=Math.max(.84,Math.min(1.2,Math.exp(-e.deltaY*.00145)));
+      zoomAt(factor,e.clientX,e.clientY);
+    },{passive:false});
+
+    const pointers=new Map();
+    let pinch=null;
+    const pinchBegin=()=>{
+      const points=[...pointers.values()];
+      if(points.length<2)return;
+      const box=stage.getBoundingClientRect();
+      const cx=(points[0].x+points[1].x)/2-box.left;
+      const cy=(points[0].y+points[1].y)/2-box.top;
+      pinch={distance:Math.max(5,Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y)),
+        zoom:state.zoom,wx:(cx-state.tx)/state.zoom,wy:(cy-state.ty)/state.zoom};
+      state.drag=null;
+    };
     stage.addEventListener('pointerdown',e=>{
-      if(e.button!==0||e.target.closest('.node'))return;
-      state.drag={pointer:e.pointerId,x:e.clientX,y:e.clientY,tx:state.tx,ty:state.ty};
-      stage.classList.add('dragging');stage.setPointerCapture(e.pointerId);
+      if(e.button!==0 && e.pointerType!=='touch')return;
+      if(e.pointerType!=='touch'&&e.target.closest('.node'))return;
+      pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY});
+      if(pointers.size===1){
+        state.drag={pointer:e.pointerId,x:e.clientX,y:e.clientY,tx:state.tx,ty:state.ty};
+        // Capturing the first tap on a node would steal its click. For touch
+        // nodes capture only after a real move begins.
+        if(!e.target.closest('.node'))stage.setPointerCapture(e.pointerId);
+      }else if(pointers.size===2){
+        pinchBegin();
+        stage.classList.add('dragging');
+        stage.setPointerCapture(e.pointerId);
+      }
     });
     stage.addEventListener('pointermove',e=>{
+      const pointer=pointers.get(e.pointerId);
+      if(!pointer)return;
+      pointer.x=e.clientX;pointer.y=e.clientY;
+      if(pointers.size>=2){
+        if(!pinch)pinchBegin();
+        const points=[...pointers.values()];
+        const box=stage.getBoundingClientRect();
+        const cx=(points[0].x+points[1].x)/2-box.left;
+        const cy=(points[0].y+points[1].y)/2-box.top;
+        const distance=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);
+        state.zoom=Math.max(.12,Math.min(5,pinch.zoom*distance/pinch.distance));
+        state.tx=cx-pinch.wx*state.zoom;
+        state.ty=cy-pinch.wy*state.zoom;
+        state.suppressClickUntil=performance.now()+280;
+        applyTransform();e.preventDefault();return;
+      }
       if(!state.drag||state.drag.pointer!==e.pointerId)return;
-      state.tx=state.drag.tx+e.clientX-state.drag.x;state.ty=state.drag.ty+e.clientY-state.drag.y;applyTransform();
+      const dx=e.clientX-state.drag.x,dy=e.clientY-state.drag.y;
+      if(Math.hypot(dx,dy)>=4){
+        stage.classList.add('dragging');
+        state.suppressClickUntil=performance.now()+280;
+        if(!stage.hasPointerCapture(e.pointerId))stage.setPointerCapture(e.pointerId);
+      }
+      if(stage.classList.contains('dragging')){
+        state.tx=state.drag.tx+dx;state.ty=state.drag.ty+dy;
+        applyTransform();e.preventDefault();
+      }
     });
-    const endDrag=e=>{if(!state.drag||state.drag.pointer!==e.pointerId)return;state.drag=null;stage.classList.remove('dragging');if(stage.hasPointerCapture(e.pointerId))stage.releasePointerCapture(e.pointerId);};
-    stage.addEventListener('pointerup',endDrag);stage.addEventListener('pointercancel',endDrag);
+    const endDrag=e=>{
+      if(!pointers.has(e.pointerId))return;
+      pointers.delete(e.pointerId);
+      if(stage.hasPointerCapture(e.pointerId))stage.releasePointerCapture(e.pointerId);
+      if(pointers.size===1){
+        const [id,p]=[...pointers.entries()][0];
+        state.drag={pointer:id,x:p.x,y:p.y,tx:state.tx,ty:state.ty};
+        pinch=null;
+      }else if(!pointers.size){
+        state.drag=null;pinch=null;stage.classList.remove('dragging');
+      }
+    };
+    stage.addEventListener('pointerup',endDrag);
+    stage.addEventListener('pointercancel',endDrag);
+    stage.addEventListener('lostpointercapture',e=>{
+      // Ending a gesture outside the viewer must never strand dragging state.
+      if(pointers.has(e.pointerId))endDrag(e);
+    });
+
+    const minimap=$('graphMinimap'),minimapSvg=$('graphMinimapSvg');
+    const gotoMiniPoint=(clientX,clientY)=>{
+      const bounds=minimapSvg.getBoundingClientRect();
+      const x=(clientX-bounds.left)/bounds.width*MINI_W;
+      const y=(clientY-bounds.top)/bounds.height*MINI_H;
+      const wx=(x-MINI_PAD)/(MINI_W-2*MINI_PAD)*state.width;
+      const wy=(y-MINI_PAD)/(MINI_H-2*MINI_PAD)*state.height;
+      const box=stage.getBoundingClientRect();
+      state.tx=box.width/2-wx*state.zoom;
+      state.ty=box.height/2-wy*state.zoom;
+      applyTransform();
+    };
+    let miniPointer=null;
+    minimap.addEventListener('pointerdown',e=>{
+      if(e.button!==0&&e.pointerType!=='touch')return;
+      e.preventDefault();e.stopPropagation();
+      miniPointer=e.pointerId;minimap.setPointerCapture(e.pointerId);
+      gotoMiniPoint(e.clientX,e.clientY);
+    });
+    minimap.addEventListener('pointermove',e=>{
+      if(miniPointer!==e.pointerId)return;
+      e.preventDefault();e.stopPropagation();
+      gotoMiniPoint(e.clientX,e.clientY);
+    });
+    const miniEnd=e=>{
+      if(miniPointer!==e.pointerId)return;
+      miniPointer=null;e.stopPropagation();
+      if(minimap.hasPointerCapture(e.pointerId))minimap.releasePointerCapture(e.pointerId);
+    };
+    minimap.addEventListener('pointerup',miniEnd);
+    minimap.addEventListener('pointercancel',miniEnd);
+    minimap.addEventListener('keydown',e=>{
+      const dx=e.key==='ArrowRight'?-75:e.key==='ArrowLeft'?75:0;
+      const dy=e.key==='ArrowDown'?-75:e.key==='ArrowUp'?75:0;
+      if(dx||dy){e.preventDefault();e.stopPropagation();state.tx+=dx;state.ty+=dy;applyTransform();}
+      else if(e.key==='Home'){e.preventDefault();fit(true);}
+    });
+
     $('speciesA').addEventListener('change',compare);
     $('speciesB').addEventListener('change',compare);
     $('runCompare').addEventListener('click',compare);
