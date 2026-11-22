@@ -41,6 +41,7 @@ jobs:
           node --check ui/custom-select.js
           node --check data/data.js
           node --check data/curation.js
+          node --check data/species.js
           node --check data/research.js
 
       - name: Validate datasets and UI contracts
@@ -53,7 +54,7 @@ jobs:
         run: |
           mkdir -p dist/data dist/ui
           cp index.html styles.css app.js dist/
-          cp data/data.js data/curation.js data/research.js dist/data/
+          cp data/data.js data/curation.js data/species.js data/research.js dist/data/
           cp ui/custom-select.js dist/ui/
           touch dist/.nojekyll
           test -s dist/index.html
