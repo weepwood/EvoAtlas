@@ -189,6 +189,10 @@ async function main(){
       nodes.map(n=>Number(n.getAttribute('transform').match(/translate\(([-\d.]+) /)?.[1])));
     assert.equal(new Set(fishTipColumns.map(x=>x.toFixed(3))).size,1,
       '23 fish terminals should align at one visual reading column');
+    const fishRootX=await page.locator('#nodeLayer .node[data-id="actinopterygii"]')
+      .getAttribute('transform').then(text=>Number(text.match(/translate\(([-\d.]+) /)?.[1]));
+    assert.ok(fishTipColumns[0]-fishRootX>=380,
+      'a shallow 23-way branch should use the canvas width, not crowd next to its trunk');
     await page.screenshot({path:'artifacts/evoatlas-fanout-structure.png'});
 
     await page.setViewportSize({width:390,height:844});
