@@ -737,7 +737,7 @@
     $('graphEmpty').hidden=state.visible.length>0;
     const hint=$('graphStage').querySelector('.graph-overlay-hint');
     if(hint)hint.textContent=state.engine==='v2'
-      ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · +N 局部展开 · 双击聚焦'
+      ? '点击三角展开支系 · 双击聚焦 · 滚轮缩放'
       : state.detail==='overview'&&state.visible.length<state.totalAvailable
         ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
         : '滚轮缩放 · 拖拽移动 · 点击类群查看';
@@ -839,9 +839,9 @@
     state.selected=null;$('emptyDetail').hidden=false;$('taxonDetail').hidden=true;closeInspector();
   }
   function reset(){
-    Object.assign(state,{root:'luca',scale:'log',layoutMode:'structure',detail:'overview',extinct:true,events:true,selected:null});
+    Object.assign(state,{root:'luca',scale:'log',layoutMode:state.engine==='legacy'?'time':'structure',detail:'overview',extinct:true,events:true,selected:null});
     state.foldedIds.clear();state.expandedIds.clear();
-    $('scaleSelect').value='log';$('layoutModeSelect').value='structure';$('detailSelect').value='overview';
+    $('scaleSelect').value='log';$('layoutModeSelect').value=state.layoutMode;$('detailSelect').value='overview';
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
     window.EvoSelect?.syncAll();
     $('taxonSearch').value='';$('searchResults').hidden=true;
@@ -1198,6 +1198,8 @@
     if(byId.has('sapiens'))$('speciesA').value='sapiens';
     if(byId.has('pan'))$('speciesB').value='pan';
     if(state.engine==='legacy'){
+      state.layoutMode='time';
+      $('layoutModeSelect').value='time';
       $('layoutModeSelect').disabled=true;
       $('layoutModeSelect').title='旧版回退模式仅支持时间坐标';
     }
