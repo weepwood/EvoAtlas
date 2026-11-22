@@ -88,6 +88,9 @@
           <div class="viewer viewer--full">
             <div class="viewer-toolbar">
               <div class="viewer-options">
+                <label>布局
+                  <select id="layoutModeSelect" aria-label="布局模式"><option value="time">时间树</option><option value="structure">结构树</option></select>
+                </label>
                 <label>时间坐标
                   <select id="scaleSelect" aria-label="时间坐标"><option value="log">对数</option><option value="linear">线性</option></select>
                 </label>
@@ -186,6 +189,8 @@
   <script src="./data/species.js"></script>
   <script src="./data/research.js"></script>
   <script src="./ui/custom-select.js"></script>
+  <script src="./layout/engine.js"></script>
+  <script src="./layout/projection.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
