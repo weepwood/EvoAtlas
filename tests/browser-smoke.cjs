@@ -210,6 +210,15 @@ async function main(){
       nodes.map(n=>Number(n.getAttribute('transform').match(/translate\([\d.-]+ ([-\d.]+)\)/)?.[1])));
     assert.ok(Math.max(...mobileY)-Math.min(...mobileY)>=180,
       'a small focused mobile subtree should spread vertically instead of compressing into a short strip');
+    const onScreenTips=await page.locator('#nodeLayer .node.terminal .node-core').evaluateAll(nodes=>{
+      const view=document.getElementById('graphStage').getBoundingClientRect();
+      return nodes.filter(node=>{
+        const r=node.getBoundingClientRect();
+        return r.width>0&&r.left>=view.left&&r.right<=view.right-5
+          &&r.top>=view.top&&r.bottom<=view.bottom;
+      }).length;
+    });
+    assert.ok(onScreenTips>=2,'mobile layout must keep at least two terminal taxa in view');
     await page.screenshot({path:'artifacts/evoatlas-tree-mobile.png'});
 
     // A URL query flag must offer a usable rollback path to the old renderer.
