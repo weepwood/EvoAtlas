@@ -206,6 +206,10 @@ async function main(){
     const transform=await page.locator('#viewport').getAttribute('transform');
     const zoomMatch=transform.match(/scale\(([-\d.]+)\)/);
     assert.ok(zoomMatch&&Number(zoomMatch[1])>=0.75,'mobile default zoom must preserve label readability');
+    const mobileY=await page.locator('#nodeLayer .node.terminal').evaluateAll(nodes=>
+      nodes.map(n=>Number(n.getAttribute('transform').match(/translate\([\d.-]+ ([-\d.]+)\)/)?.[1])));
+    assert.ok(Math.max(...mobileY)-Math.min(...mobileY)>=180,
+      'a small focused mobile subtree should spread vertically instead of compressing into a short strip');
     await page.screenshot({path:'artifacts/evoatlas-tree-mobile.png'});
 
     // A URL query flag must offer a usable rollback path to the old renderer.
