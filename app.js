@@ -451,20 +451,52 @@
   }
   function populateSources(){
     const container=$('sourceGrid');
-    container.replaceChildren(...research.sources.map(s=>{
-      const card=document.createElement('article');card.className='source-card';
-      const header=document.createElement('header'),title=document.createElement('h3'),tag=document.createElement('span');
-      title.textContent=s.name;tag.className='category';tag.textContent=s.category;header.append(title,tag);
-      const description=document.createElement('p');description.textContent=s.description;
-      const link=document.createElement('a');link.href=s.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='打开数据源 ↗';
-      card.append(header,description,link);return card;
-    }));
-    $('researchGrid').replaceChildren(...research.topics.map(t=>{
+    container.replaceChildren();
+    const notice=document.createElement('p');
+    notice.className='source-directory-note';
+    notice.textContent='收录 '+research.sources.length+' 个资料入口，按研究用途分类。当前均为推荐核验资源，尚未连接实时 API，也不代表已核验当前树上的每条记录。';
+    container.append(notice);
+    (research.groups||[]).forEach(group=>{
+      const items=research.sources.filter(source=>source.group===group.id);
+      if(!items.length)return;
+      const section=document.createElement('section');section.className='source-group';
+      const heading=document.createElement('div');heading.className='source-group-heading';
+      const title=document.createElement('h3');title.textContent=group.name;
+      const count=document.createElement('span');count.textContent=items.length+' 个资源';
+      heading.append(title,count);
+      const description=document.createElement('p');description.className='source-directory-note';description.textContent=group.description;
+      const grid=document.createElement('div');grid.className='source-group-cards';
+      items.forEach(source=>{
+        const card=document.createElement('article');card.className='source-card';
+        const header=document.createElement('header');
+        const name=document.createElement('h3');name.textContent=source.name;
+        const category=document.createElement('span');category.className='category';category.textContent=source.category;
+        header.append(name,category);
+        const summary=document.createElement('p');summary.textContent=source.description;
+        const usage=document.createElement('span');usage.className='source-usage';usage.textContent='主要用途：'+source.usage;
+        const limitation=document.createElement('div');limitation.className='source-limitation';
+        const emphasis=document.createElement('b');emphasis.textContent='注意：';
+        limitation.append(emphasis,document.createTextNode(source.limitation));
+        const links=document.createElement('div');links.className='source-links';
+        const website=document.createElement('a');website.href=source.url;website.target='_blank';website.rel='noopener noreferrer';website.textContent='官方网站 ↗';
+        links.append(website);
+        if(source.resourceUrl && source.resourceUrl!==source.url){
+          const documentation=document.createElement('a');documentation.href=source.resourceUrl;
+          documentation.target='_blank';documentation.rel='noopener noreferrer';documentation.textContent='数据或文档 ↗';
+          links.append(documentation);
+        }
+        card.append(header,summary,usage,limitation,links);
+        grid.append(card);
+      });
+      section.append(heading,description,grid);
+      container.append(section);
+    });
+    $('researchGrid').replaceChildren(...research.topics.map(topic=>{
       const card=document.createElement('article');card.className='research-card';
-      const type=document.createElement('div');type.className='research-type';type.textContent=t.category;
-      const title=document.createElement('h3');title.textContent=t.title;
-      const description=document.createElement('p');description.textContent=t.summary;
-      const link=document.createElement('a');link.href=t.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='阅读资料 ↗';
+      const type=document.createElement('div');type.className='research-type';type.textContent=topic.category;
+      const title=document.createElement('h3');title.textContent=topic.title;
+      const description=document.createElement('p');description.textContent=topic.summary;
+      const link=document.createElement('a');link.href=topic.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='阅读资料 ↗';
       card.append(type,title,description,link);return card;
     }));
   }
