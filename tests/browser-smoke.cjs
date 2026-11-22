@@ -71,7 +71,7 @@ async function main(){
     assert.equal(await page.locator('#sidebar').evaluate(el=>el.classList.contains('open')),false);
     await page.waitForTimeout(350);
     const transform=await page.locator('#viewport').getAttribute('transform');
-    const zoomMatch=transform.match(/scale\\(([-\\d.]+)\\)/);
+    const zoomMatch=transform.match(/scale\(([-\d.]+)\)/);
     assert.ok(zoomMatch&&Number(zoomMatch[1])>=0.75,'mobile default zoom must preserve label readability');
     await page.screenshot({path:'artifacts/evoatlas-tree-mobile.png'});
 
