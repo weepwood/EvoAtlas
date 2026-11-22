@@ -19,7 +19,11 @@
   const featured = new Set(['sapiens','pan','neanderthal','australopithecus','gallus','tyrannosaurus','archaeopteryx','tiktaalik','arabidopsis','saccharomyces','canis','felis','balaenoptera','mus','pongo','gorilla','danaus','danio','ornithorhynchus','drosophila']);
   const state = {view:'tree',root:'luca',scale:'log',detail:'overview',extinct:true,events:true,selected:null,
     visible:[],parents:new Map(),pos:new Map(),width:1500,height:700,maxMa:4000,tx:0,ty:0,zoom:1,drag:null,
-    searchHits:[],searchIndex:0,theme:'system'};
+    searchHits:[],searchIndex:0,theme:'system',
+    engine:(new URLSearchParams(location.search).get('layout')==='legacy'||!window.EvoLayoutEngine||!window.EvoTreeProjection)?'legacy':'v2',
+    layoutMode:'time',foldedIds:new Set(),expandedIds:new Set(),
+    layoutSegments:[],layoutMeta:new Map(),layoutDepthStep:145,
+    layoutMarginX:58,layoutRightInset:185,layoutPlotWidth:1400};
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const esc = x => String(x ?? '').replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const make = (tag,attributes={}) => {
@@ -52,7 +56,7 @@
     }
     return timeOf(n)===0?'现生（0 Ma）':Number(timeOf(n).toFixed(1))+' Ma（教学近似）';
   }
-  function build() {
+  function buildLegacy() {
     const candidates=descendants(state.root).filter(n=>state.extinct || n.status!=='extinct');
     const candidateIds=new Set(candidates.map(n=>n.id));
     const include=new Set([state.root]);
@@ -112,6 +116,80 @@
     }
     state.hiddenById=new Map(state.visible.map(n=>[n.id,Math.max(0,(total.get(n.id)||1)-(shown.get(n.id)||1))]));
   }
+
+  function buildV2(){
+    const view=window.EvoTreeProjection.project(taxa,{
+      rootId:state.root,detail:state.detail,selectedId:state.selected,
+      extinct:state.extinct,budget:window.innerWidth<700?34:58,
+      foldedIds:state.foldedIds,expandedIds:state.expandedIds
+    });
+    state.layoutSource=view;
+    state.totalAvailable=view.totalAvailable;
+  }
+  function build(){
+    return state.engine==='v2'?buildV2():buildLegacy();
+  }
+  function layoutV2(){
+    const stage=$('graphStage'),stageWidth=stage.clientWidth||900;
+    state.layoutMarginX=58;state.layoutRightInset=185;state.layoutDepthStep=145;
+    state.layoutPlotWidth=state.layoutMode==='structure'
+      ?Math.max(1040,stageWidth*1.2)
+      :state.scale==='linear'?Math.max(960,stageWidth*1.18)
+      :Math.max(940,stageWidth*1.12);
+    const result=window.EvoLayoutEngine.layoutTree(state.layoutSource.records,{
+      rootId:state.root,mode:state.layoutMode,timeScale:state.scale,
+      collapsedIds:state.layoutSource.collapsedIds,sort:'input',
+      plotWidth:state.layoutPlotWidth,
+      marginX:state.layoutMarginX,rightInset:state.layoutRightInset,
+      marginY:58,labelHeight:19,leafGap:13,subtreeGap:25,depthStep:state.layoutDepthStep
+    });
+    state.layoutMeta=new Map(result.nodes.map(n=>[n.id,n]));
+    state.visible=result.nodes.map(n=>byId.get(n.id));
+    state.parents=new Map(result.nodes.map(n=>[n.id,n.parentId]));
+    state.pos=new Map(result.nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
+    state.hiddenById=new Map(result.nodes.map(n=>[n.id,n.hiddenDescendants]));
+    const stageHeight=stage.clientHeight||600;
+    const minHeight=Math.max(440,(stageHeight-46)/Math.max(.62,Math.min(1,(stageWidth-44)/result.bounds.width)));
+    const extraY=Math.max(0,minHeight-result.bounds.height)/2;
+    state.layoutSegments=result.segments.map(seg=>({...seg,y1:seg.y1+extraY,y2:seg.y2+extraY}));
+    state.pos.forEach(p=>p.y+=extraY);
+    state.width=result.bounds.width;
+    state.height=Math.max(result.bounds.height,minHeight);
+    state.maxMa=result.axis.maxMa||0;
+    state.layoutStats=result.stats;
+    if(result.stats.visibleNodes!==state.visible.length)throw Error('Layout node count mismatch');
+  }
+  function layout(){
+    return state.engine==='v2'?layoutV2():layoutLegacy();
+  }
+  function toggleBranch(id){
+    if(state.engine!=='v2'||!byId.has(id))return;
+    const node=state.layoutMeta.get(id);
+    if(!node)return;
+    const old=state.pos.get(id),screenX=old?state.tx+old.x*state.zoom:null,
+      screenY=old?state.ty+old.y*state.zoom:null;
+    if(node.collapsed){
+      state.foldedIds.delete(id);
+      state.expandedIds.add(id);
+    }else if(node.childIds.length){
+      state.foldedIds.add(id);
+      state.expandedIds.delete(id);
+      // A descendant cannot remain selected when its branch is hidden.
+      if(state.selected&&state.selected!==id&&inside(state.selected,id)){
+        state.selected=id;
+        showDetail(byId.get(id));
+      }
+    }else return;
+    render(false);
+    const updated=state.pos.get(id);
+    if(updated&&screenX!==null){
+      state.tx=screenX-updated.x*state.zoom;
+      state.ty=screenY-updated.y*state.zoom;
+    }
+    applyTransform();
+    syncUrl();
+  }
+
   function xFor(ma){
     const left=65, right=215;
     const usable=state.width-left-right;
@@ -120,7 +198,7 @@
       : 1-Math.log10(ma+1)/Math.log10(state.maxMa+1);
     return left+usable*Math.max(0,Math.min(1,fraction));
   }
-  function layout(){
+  function layoutLegacy(){
     const branches=new Map(state.visible.map(n=>[n.id,[]]));
     state.visible.forEach(n=>{
       const parent=state.parents.get(n.id);
@@ -286,7 +364,7 @@
     }
     return placements;
   }
-  function drawTree(){
+  function drawTreeLegacy(){
     const edges=$('edgeLayer'),nodes=$('nodeLayer');
     edges.replaceChildren();nodes.replaceChildren();
     const activePath=new Set(state.selected?path(state.selected).map(n=>n.id):[]);
@@ -297,6 +375,11 @@
       const d='M '+a.x+' '+a.y+' H '+middle+' V '+b.y+' H '+b.x;
       edges.append(make('path',{d,'data-child':n.id,class:'edge'+(activePath.has(n.id)&&activePath.has(parent)?' active-path':'')}));
     });
+    drawNodes();
+  }
+
+  function drawNodes(){
+    const nodes=$('nodeLayer');nodes.replaceChildren();
     const labels=chooseLabels();
     state.visible.forEach(n=>{
       const point=state.pos.get(n.id),meta=labels.get(n.id);
