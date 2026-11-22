@@ -28,7 +28,7 @@ async function main(){
       'overview should show explicit collapsed clade glyphs');
     const initialTips=await page.locator('#nodeLayer .node.terminal:not(.selected)').evaluateAll(nodes=>
       nodes.filter(n=>!n.querySelector('.collapsed-summary'))
-        .map(n=>new DOMMatrix(n.getAttribute('transform')).e));
+        .map(n=>Number(n.getAttribute('transform').match(/translate\(([-\d.]+) /)?.[1])));
     assert.ok(new Set(initialTips.map(x=>x.toFixed(3))).size<=1,
       'structural cladogram should align the real terminal tips');
     await page.screenshot({path:'artifacts/evoatlas-atlas-structure-default.png'});
