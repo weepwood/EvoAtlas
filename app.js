@@ -80,14 +80,17 @@
     });
   }
   function xFor(ma){
-    const usable=state.width-230;
-    const ratio=state.scale==='linear' ? 1-ma/Math.max(1,state.maxMa) : 1-Math.log10(ma+1)/Math.log10(state.maxMa+1);
-    return 62+usable*Math.max(0,Math.min(1,ratio));
+    const left=65, right=215;
+    const usable=state.width-left-right;
+    const fraction=state.scale==='linear'
+      ? 1-ma/Math.max(1,state.maxMa)
+      : 1-Math.log10(ma+1)/Math.log10(state.maxMa+1);
+    return left+usable*Math.max(0,Math.min(1,fraction));
   }
   function layout() {
     const branches=new Map(state.visible.map(n=>[n.id,[]]));
     state.visible.forEach(n=>{const p=state.parents.get(n.id);if(p && branches.has(p))branches.get(p).push(n.id);});
-    let leaves=0;const yy=new Map(),top=75,gap=state.detail==='full'?40:49;
+    let leaves=0;const yy=new Map(),top=86,gap=state.detail==='full'?42:54;
     const setY=id=>{
       const kids=branches.get(id)||[];
       if(!kids.length){const value=top+leaves++*gap;yy.set(id,value);return value;}
@@ -99,31 +102,104 @@
     // Adapt the virtual canvas to the real reading area before fitting;
     // a fixed 1400px overview produced illegibly small text on laptops.
     const stageWidth=$('graphStage').clientWidth||900;
-    state.width=state.detail==='full'?Math.max(1150,stageWidth*1.25):Math.max(940,stageWidth*1.1);
+    state.width=state.scale==='linear'
+      ? Math.max(1450,stageWidth*1.7)
+      : state.detail==='full'?Math.max(1180,stageWidth*1.3):Math.max(970,stageWidth*1.12);
     state.maxMa=Math.max(...state.visible.map(timeOf),timeOf(byId.get(state.root))||1,1);
     state.pos=new Map(state.visible.map(n=>[n.id,{x:xFor(timeOf(n)),y:yy.get(n.id)||top}]));
   }
   const renderLabel=(text,x,y,cl='axis-label')=>{const el=make('text',{x,y,class:cl});el.textContent=text;return el;};
-  function drawGrid() {
-    const layer=$('gridLayer');layer.replaceChildren();
-    const ticks=[0,1,10,66,145,252,541,1000,2000,3000,4000,state.maxMa]
-      .filter((v,i,a)=>v<=state.maxMa && a.indexOf(v)===i).sort((a,b)=>b-a);
-    ticks.forEach(ma=>{
-      const x=xFor(ma);
-      layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'grid-line'}));
-      layer.append(renderLabel(ma===0?'现在':(ma>=1000?(ma/1000)+' Ga':ma+' Ma'),x+3,30));
-    });
-    layer.append(make('line',{x1:50,y1:43,x2:state.width-155,y2:43,class:'axis-line'}));
+  function axisTicks(){
+    if(state.scale==='log'){
+      const values=[0,1,10,66,145,252,541,1000,2000,3000,4000,state.maxMa];
+      return [...new Set(values.filter(v=>v<=state.maxMa))].sort((a,b)=>b-a);
+    }
+    // Nice linear intervals. Do not repeat the logarithmic ticks on a linear axis.
+    const target=Math.max(3,Math.floor((state.width-280)/150));
+    const rough=state.maxMa/target;
+    const base=10**Math.floor(Math.log10(rough));
+    const step=[1,2,2.5,5,10].map(v=>v*base).find(v=>v>=rough)||10*base;
+    const values=[0,state.maxMa];
+    for(let ma=step;ma<state.maxMa;ma+=step)values.push(Math.round(ma*1000)/1000);
+    return values.sort((a,b)=>b-a);
   }
-  function drawEvents() {
+  function drawGrid(){
+    const layer=$('gridLayer');layer.replaceChildren();
+    const ticks=axisTicks(),placed=[];
+    for(const ma of ticks){
+      const x=xFor(ma);
+      layer.append(make('line',{x1:x,y1:49,x2:x,y2:state.height-25,class:'grid-line'}));
+      const label=ma===0?'现在':ma>=1000?Number((ma/1000).toFixed(2))+' Ga':Number(ma.toFixed(1))+' Ma';
+      const estimated=label.length*7+12;
+      const left=x+3,right=left+estimated;
+      if(placed.some(p=>left<p.right+15&&right>p.left-15))continue;
+      placed.push({left,right});
+      layer.append(renderLabel(label,x+3,30));
+    }
+    layer.append(make('line',{x1:52,y1:49,x2:state.width-140,y2:49,class:'axis-line'}));
+  }
+  function drawEvents(){
     const layer=$('eventLayer');layer.replaceChildren();
     if(!state.events)return;
-    events.filter(e=>e.ma<=state.maxMa).forEach((e,i)=>{
-      const x=xFor(e.ma);
-      layer.append(make('rect',{x:x-7,y:43,width:14,height:state.height-65,class:'event-band'}));
-      layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'event-line'}));
-      layer.append(renderLabel(e.name,x+7,59+(i%2)*14,'event-label'));
+    let previousLabelX=-Infinity;
+    events.filter(event=>event.ma<=state.maxMa).sort((a,b)=>b.ma-a.ma).forEach(event=>{
+      const x=xFor(event.ma);
+      const band=make('rect',{x:x-6,y:49,width:12,height:state.height-75,class:'event-band'});
+      const line=make('line',{x1:x,y1:49,x2:x,y2:state.height-25,class:'event-line'});
+      const title=make('title');title.textContent=event.name+' · '+event.ma+' Ma';line.append(title);
+      layer.append(band,line);
+      // Suppress only event captions that overlap; never suppress the event marker.
+      if(x-previousLabelX>=95){
+        layer.append(renderLabel(event.name,x+6,66,'event-label'));
+        previousLabelX=x;
+      }
     });
+  }
+  function approximateLabelWidth(text){
+    return [...text].reduce((width,char)=>width+(/[\u2e80-\u9fff]/.test(char)?12.5:7.2),0)+4;
+  }
+  function chooseLabels(){
+    const placements=new Map(),placed=[];
+    const childCount=new Map(state.visible.map(n=>[n.id,0]));
+    state.visible.forEach(n=>{
+      const parent=state.parents.get(n.id);
+      if(parent)childCount.set(parent,(childCount.get(parent)||0)+1);
+    });
+    const sorted=[...state.visible].sort((a,b)=>{
+      const priority=n=>(n.id===state.selected?100:0)+(n.id===state.root?70:0)+(childCount.get(n.id)===0?35:0)+(n.status==='extant'?18:0);
+      return priority(b)-priority(a) || state.pos.get(a.id).y-state.pos.get(b.id).y;
+    });
+    const overlaps=(a,b)=>Math.max(0,Math.min(a.right,b.right)-Math.max(a.left,b.left))*
+      Math.max(0,Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top));
+    for(const node of sorted){
+      const point=state.pos.get(node.id);
+      if(!point)continue;
+      const leaf=!(childCount.get(node.id)>0);
+      const width=approximateLabelWidth(node.zh),height=17;
+      const preferred=leaf?'right':'left';
+      const sides=[preferred,preferred==='right'?'left':'right'];
+      const offsets=leaf?[0,-19,19,-36,36]:[-16,16,-33,33,0,-49,49];
+      let chosen=null,best=Infinity;
+      for(const side of sides){
+        for(const dy of offsets){
+          const dx=side==='right'?14:-14;
+          const textX=point.x+dx;
+          const rect={left:side==='right'?textX:textX-width,
+                      right:side==='right'?textX+width:textX,
+                      top:point.y+dy-height/2,bottom:point.y+dy+height/2};
+          const overflow=Math.max(0,10-rect.left)+Math.max(0,rect.right-(state.width-8))+
+            Math.max(0,40-rect.top)+Math.max(0,rect.bottom-(state.height-10));
+          const collision=placed.reduce((score,old)=>score+overlaps(rect,old),0);
+          // Labels never alter the phylogenetic node positions or time projection.
+          const score=collision*30+overflow*200+Math.abs(dy)*.15+
+            (side===preferred?0:4)+(leaf&&dy!==0?1:0);
+          if(score<best){best=score;chosen={dx,dy,side,rect};}
+        }
+      }
+      placements.set(node.id,{...chosen,leaf});
+      placed.push(chosen.rect);
+    }
+    return placements;
   }
   function drawTree(){
     const edges=$('edgeLayer'),nodes=$('nodeLayer');
@@ -136,11 +212,16 @@
       const d='M '+a.x+' '+a.y+' H '+middle+' V '+b.y+' H '+b.x;
       edges.append(make('path',{d,class:'edge'+(activePath.has(n.id)&&activePath.has(parent)?' active-path':'')}));
     });
+    const labels=chooseLabels();
     state.visible.forEach(n=>{
-      const p=state.pos.get(n.id);if(!p)return;
-      const node=make('g',{class:'node '+n.status+(n.id===state.selected?' selected':''),transform:'translate('+p.x+' '+p.y+')','data-id':n.id,tabindex:0,role:'button','aria-label':n.zh+'，'+n.rank+'，'+nodeAge(n)});
+      const point=state.pos.get(n.id),meta=labels.get(n.id);
+      if(!point||!meta)return;
+      const node=make('g',{class:'node '+n.status+(meta.leaf?' terminal':' internal')+(n.id===state.selected?' selected':''),
+        transform:'translate('+point.x+' '+point.y+')','data-id':n.id,tabindex:0,role:'button',
+        'aria-label':n.zh+'，'+n.rank+'，'+nodeAge(n)});
       node.append(make('circle',{class:'node-halo',r:12}),make('circle',{class:'node-core',r:n.id===state.root?6:4.8}));
-      const label=make('text',{class:'node-label',x:12,y:4});
+      const label=make('text',{class:'node-label',x:meta.dx,y:meta.dy,'text-anchor':meta.side==='right'?'start':'end',
+        'dominant-baseline':'middle'});
       label.textContent=n.zh;
       node.append(label);
       node.addEventListener('click',e=>{e.stopPropagation();selectNode(n.id);});
@@ -186,23 +267,31 @@
       if(active)el.setAttribute('aria-current','true');else el.removeAttribute('aria-current');
     });
   }
-  function updateCrumbs(){
-    const box=$('crumbs');box.replaceChildren();
+  function updateHeaderBreadcrumb(){
+    const box=$('headerBreadcrumb');box.replaceChildren();
+    const viewLabels={compare:'共同祖先比较',sources:'资料与方法'};
+    if(state.view!=='tree'){
+      const label=document.createElement('span');label.className='breadcrumb-current';
+      label.textContent=viewLabels[state.view]||'生命之树';box.append(label);return;
+    }
     const ancestors=path(state.root).reverse();
-    ancestors.forEach((n,i)=>{
-      if(i){const s=document.createElement('span');s.textContent=' / ';box.append(s);}
-      const b=document.createElement('button');b.textContent=n.zh;b.dataset.focus=n.id;
-      b.addEventListener('click',()=>focusRoot(n.id));box.append(b);
+    ancestors.forEach((taxon,i)=>{
+      if(i){
+        const slash=document.createElement('span');slash.className='breadcrumb-separator';
+        slash.setAttribute('aria-hidden','true');slash.textContent='/';box.append(slash);
+      }
+      const button=document.createElement('button');button.type='button';
+      button.textContent=taxon.zh;button.dataset.focus=taxon.id;
+      if(i===ancestors.length-1)button.setAttribute('aria-current','location');
+      button.addEventListener('click',()=>focusRoot(taxon.id));box.append(button);
     });
+    box.scrollLeft=box.scrollWidth;
   }
-  function render(fitNow=false) {
+  function render(fitNow=false){
     build();layout();drawGrid();drawEvents();drawTree();
-    const title=FOCUS[state.root]||byId.get(state.root)?.zh||'生命之树';
-    $('graphTitle').textContent=title;
-    $('graphSubtitle').textContent='教学示意 · '+state.visible.length+' 个可见节点 · 时间跨度 '+formatMa(state.maxMa).replace('约 ','');
-    $('visibleCount').textContent=state.visible.length+' 个节点';
+    $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
-    updateClades();updateCrumbs();
+    updateClades();updateHeaderBreadcrumb();
     if(fitNow)requestAnimationFrame(fit);else applyTransform();
   }
   function closeInspector(){$('detailPanel').classList.remove('open');}
@@ -275,6 +364,7 @@
     $('addToCompare').onclick=()=>{
       $('speciesA').value=n.id;
       if($('speciesB').value===n.id){const other=taxa.find(x=>x.rank==='种'&&x.id!==n.id);if(other)$('speciesB').value=other.id;}
+      window.EvoSelect?.syncAll();
       switchView('compare');compare();
     };
   }
@@ -285,6 +375,7 @@
     Object.assign(state,{root:'luca',scale:'log',detail:'overview',extinct:true,events:true,selected:null});
     $('scaleSelect').value='log';$('detailSelect').value='overview';
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
+    window.EvoSelect?.syncAll();
     $('taxonSearch').value='';$('searchResults').hidden=true;
     clearSelection();switchView('tree',false);render(true);syncUrl();
   }
@@ -352,7 +443,7 @@
     state.view=view;
     document.querySelectorAll('.view-panel').forEach(el=>el.classList.toggle('active',el.dataset.panel===view));
     document.querySelectorAll('.nav-item').forEach(el=>{const active=el.dataset.view===view;el.classList.toggle('active',active);el.setAttribute('aria-current',active?'page':'false');});
-    $('headerContext').textContent={tree:'生命之树',compare:'共同祖先比较',sources:'资料与方法'}[view];
+    updateHeaderBreadcrumb();window.EvoSelect?.close();
     $('mainArea').scrollTop=0;hideTip();closeSidebar();closeInspector();
     if(view==='tree')requestAnimationFrame(fit);
     if(view==='compare')compare();
@@ -410,7 +501,6 @@
     $('mobileScrim').addEventListener('click',closeSidebar);
     $('closeInspector').addEventListener('click',closeInspector);
     $('suggestNode').addEventListener('click',()=>selectNode('sapiens'));
-    $('exploreHuman').addEventListener('click',()=>{focusRoot('hominina');selectNode('sapiens');});
     $('randomSpecies').addEventListener('click',()=>{
       const species=taxa.filter(n=>n.rank==='种');
       const random=species[Math.floor(Math.random()*species.length)];
@@ -445,7 +535,8 @@
     $('runCompare').addEventListener('click',compare);
     $('swapSpecies').addEventListener('click',()=>{
       const a=$('speciesA').value;
-      $('speciesA').value=$('speciesB').value;$('speciesB').value=a;compare();
+      $('speciesA').value=$('speciesB').value;$('speciesB').value=a;
+      window.EvoSelect?.syncAll();compare();
     });
     $('themeToggle').addEventListener('click',()=>{
       state.theme=state.theme==='system'?'light':state.theme==='light'?'dark':'system';
@@ -480,6 +571,7 @@
     }
     if(byId.has('sapiens'))$('speciesA').value='sapiens';
     if(byId.has('pan'))$('speciesB').value='pan';
+    window.EvoSelect?.enhanceAll();
     bind();readHash();compare();
   }
   init();
