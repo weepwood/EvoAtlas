@@ -397,17 +397,24 @@
       node.append(label);
       const hidden=state.hiddenById?.get(n.id)||0;
       const hasChildren=(children.get(n.id)||[]).length>0;
-      if(state.detail==='overview' && n.id!==state.root && hidden>=3 && hasChildren){
-        const more=make('g',{class:'node-more','data-expand':n.id,role:'button',tabindex:0,
-          'aria-label':'聚焦'+n.zh+'，查看另外 '+hidden+' 个节点'});
-        const text=hidden>99?'99+':'+'+hidden;
+      const layoutNode=state.engine==='v2'?state.layoutMeta.get(n.id):null;
+      const canToggle=state.engine==='v2'
+        ? Boolean(layoutNode&&(layoutNode.collapsed||layoutNode.childIds.length))
+        : state.detail==='overview'&&hidden>=3&&hasChildren;
+      if(n.id!==state.root && canToggle){
+        const expanded=state.engine==='v2' && !layoutNode.collapsed;
+        const more=make('g',{class:'node-more'+(expanded?' expanded':''),
+          'data-expand':n.id,role:'button',tabindex:0,
+          'aria-label':expanded?'收起'+n.zh+'支系':'展开'+n.zh+'，查看另外 '+hidden+' 个节点'});
+        const text=expanded?'−':hidden>99?'99+':'+'+hidden;
         const w=14+text.length*7.2;
         more.append(make('rect',{x:9,y:18,width:w,height:18,rx:6}));
         const countLabel=make('text',{x:9+w/2,y:30,'text-anchor':'middle'});
         countLabel.textContent=text;more.append(countLabel);
-        more.addEventListener('click',event=>{event.stopPropagation();focusRoot(n.id);});
+        const action=()=>state.engine==='v2'?toggleBranch(n.id):focusRoot(n.id);
+        more.addEventListener('click',event=>{event.stopPropagation();action();});
         more.addEventListener('keydown',event=>{
-          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();focusRoot(n.id);}
+          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();action();}
         });
         node.append(more);
       }
@@ -435,6 +442,26 @@
       nodes.append(node);
     });
   }
+
+  function drawTreeV2(){
+    const edges=$('edgeLayer');
+    edges.replaceChildren();
+    const lineage=new Set(state.selected?path(state.selected).map(n=>n.id):[]);
+    for(const segment of state.layoutSegments){
+      const onPath=segment.kind==='stem'
+        ?lineage.has(segment.ownerId)
+        :lineage.has(segment.ownerId)&&lineage.has(segment.childId);
+      const d='M '+segment.x1+' '+segment.y1+' L '+segment.x2+' '+segment.y2;
+      edges.append(make('path',{d,
+        class:'edge '+(segment.kind==='stem'?'edge-stem':'edge-arm')+(onPath?' active-path':''),
+        'data-owner':segment.ownerId,'data-child':segment.childId||''}));
+    }
+    drawNodes();
+  }
+  function drawTree(){
+    return state.engine==='v2'?drawTreeV2():drawTreeLegacy();
+  }
+
   function navigateNodeKeyboard(e,id){
     if(e.key==='Enter'||e.key===' '){
       e.preventDefault();e.stopPropagation();
@@ -465,8 +492,11 @@
     const tree=$('treeSvg');
     const ancestry=new Set(id?path(id).map(n=>n.id):[]);
     tree.classList.toggle('has-hover',Boolean(id));
-    $('edgeLayer').querySelectorAll('[data-child]').forEach(el=>{
-      el.classList.toggle('hover-path',ancestry.has(el.dataset.child));
+    $('edgeLayer').querySelectorAll('[data-child], [data-owner]').forEach(el=>{
+      const isStem=el.classList.contains('edge-stem');
+      el.classList.toggle('hover-path',isStem
+        ?ancestry.has(el.dataset.owner)
+        :ancestry.has(el.dataset.child));
     });
     $('nodeLayer').querySelectorAll('.node').forEach(el=>{
       el.classList.toggle('hover-lineage',ancestry.has(el.dataset.id));
@@ -481,14 +511,25 @@
     const edges=$('minimapEdges'),nodes=$('minimapNodes');
     edges.replaceChildren();nodes.replaceChildren();
     if(!state.pos.size)return;
+    if(state.engine==='v2'){
+      for(const segment of state.layoutSegments){
+        const start=miniPoint({x:segment.x1,y:segment.y1});
+        const end=miniPoint({x:segment.x2,y:segment.y2});
+        edges.append(make('path',{d:'M '+start.x+' '+start.y+' L '+end.x+' '+end.y}));
+      }
+    }else{
+      for(const n of state.visible){
+        const point=miniPoint(state.pos.get(n.id));
+        const parent=state.parents.get(n.id);
+        if(parent && state.pos.has(parent)){
+          const from=miniPoint(state.pos.get(parent));
+          const middle=from.x+(point.x-from.x)*.35;
+          edges.append(make('path',{d:'M '+from.x+' '+from.y+' H '+middle+' V '+point.y+' H '+point.x}));
+        }
+      }
+    }
     for(const n of state.visible){
       const point=miniPoint(state.pos.get(n.id));
-      const parent=state.parents.get(n.id);
-      if(parent && state.pos.has(parent)){
-        const from=miniPoint(state.pos.get(parent));
-        const middle=from.x+(point.x-from.x)*.35;
-        edges.append(make('path',{d:'M '+from.x+' '+from.y+' H '+middle+' V '+point.y+' H '+point.x}));
-      }
       if(n.id===state.root || n.id===state.selected || (children.get(n.id)||[]).length>=5)
         nodes.append(make('circle',{cx:point.x,cy:point.y,r:n.id===state.selected?2.8:1.6,
           class:n.id===state.selected?'mini-selected':'mini-node'}));
@@ -600,12 +641,20 @@
     $('treeSvg').classList.remove('has-hover');
     hideTip();
     build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
+    $('graphStage').dataset.layout=state.layoutMode;
+    $('graphStage').dataset.engine=state.engine;
+    const structure=state.engine==='v2' && state.layoutMode==='structure';
+    $('scaleSelect').disabled=structure;
+    $('eventToggle').disabled=structure;
+    window.EvoSelect?.sync($('scaleSelect'));
     $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
     const hint=$('graphStage').querySelector('.graph-overlay-hint');
-    if(hint)hint.textContent=state.detail==='overview'&&state.visible.length<state.totalAvailable
-      ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
-      : '滚轮缩放 · 拖拽移动 · 点击类群查看';
+    if(hint)hint.textContent=state.engine==='v2'
+      ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · +N 局部展开 · 双击聚焦'
+      : state.detail==='overview'&&state.visible.length<state.totalAvailable
+        ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
+        : '滚轮缩放 · 拖拽移动 · 点击类群查看';
     updateClades();updateHeaderBreadcrumb();
     if(fitNow)requestAnimationFrame(()=>fit());else applyTransform();
   }
@@ -635,6 +684,14 @@
     if(!inside(id,state.root))state.root='luca';
     if(!state.extinct && n.status==='extinct'){$('extinctToggle').checked=true;state.extinct=true;}
     state.selected=id;
+    if(state.engine==='v2'){
+      // Reveal the selected true lineage, even when ancestors were auto-folded.
+      for(const ancestor of path(id)){
+        state.foldedIds.delete(ancestor.id);
+        state.expandedIds.add(ancestor.id);
+        if(ancestor.id===state.root)break;
+      }
+    }
     if(state.view!=='tree')switchView('tree',false);
     render(false);
     if(center)centerNode(id);
@@ -695,8 +752,9 @@
     state.selected=null;$('emptyDetail').hidden=false;$('taxonDetail').hidden=true;closeInspector();
   }
   function reset(){
-    Object.assign(state,{root:'luca',scale:'log',detail:'overview',extinct:true,events:true,selected:null});
-    $('scaleSelect').value='log';$('detailSelect').value='overview';
+    Object.assign(state,{root:'luca',scale:'log',layoutMode:'time',detail:'overview',extinct:true,events:true,selected:null});
+    state.foldedIds.clear();state.expandedIds.clear();
+    $('scaleSelect').value='log';$('layoutModeSelect').value='time';$('detailSelect').value='overview';
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
     window.EvoSelect?.syncAll();
     $('taxonSearch').value='';$('searchResults').hidden=true;
@@ -862,6 +920,14 @@
       if(random)selectNode(random.id);
     });
     $('scaleSelect').addEventListener('change',e=>{state.scale=e.target.value;render(true);});
+    $('layoutModeSelect').addEventListener('change',e=>{
+      state.layoutMode=e.target.value;
+      if(state.engine==='legacy' && state.layoutMode==='structure'){
+        state.layoutMode='time';e.target.value='time';
+        window.EvoSelect?.sync(e.target);
+      }
+      render(true);
+    });
     $('detailSelect').addEventListener('change',e=>{state.detail=e.target.value;render(true);});
     $('extinctToggle').addEventListener('change',e=>{
       state.extinct=e.target.checked;
@@ -1044,6 +1110,10 @@
     }
     if(byId.has('sapiens'))$('speciesA').value='sapiens';
     if(byId.has('pan'))$('speciesB').value='pan';
+    if(state.engine==='legacy'){
+      $('layoutModeSelect').disabled=true;
+      $('layoutModeSelect').title='旧版回退模式仅支持时间坐标';
+    }
     window.EvoSelect?.enhanceAll();
     bind();readHash();compare();
   }
