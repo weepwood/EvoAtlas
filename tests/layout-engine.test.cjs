@@ -124,3 +124,23 @@ test('invalid input fails early rather than silently distorting relationships',(
   assert.throws(()=>makeHierarchy([{id:'a',parent:'b'},{id:'b',parent:'a'}],'a'),/Cycle/);
   assert.throws(()=>layoutTree([{id:'r',parent:null}],{mode:'radial'}),/Unsupported layout mode/);
 });
+
+
+test('missing dates are allowed only in structural mode',()=>{
+  const fixture=[{id:'r',parent:null},{id:'s',parent:'r'}];
+  const structure=layoutTree(fixture,{rootId:'r',mode:'structure'});
+  assert.equal(structure.nodes.length,2);
+  assert.equal(structure.axis.kind,null);
+  assert.throws(()=>layoutTree(fixture,{rootId:'r',mode:'time'}),/Missing or invalid time/);
+});
+
+test('time projection rejects negative or contradictory chronological branches',()=>{
+  assert.throws(()=>layoutTree([
+    {id:'r',parent:null,ageMa:-100},
+    {id:'s',parent:'r',ageMa:0}
+  ],{rootId:'r',mode:'time'}),/Missing or invalid time/);
+  assert.throws(()=>layoutTree([
+    {id:'r',parent:null,ageMa:10},
+    {id:'s',parent:'r',ageMa:20}
+  ],{rootId:'r',mode:'time'}),/Time order conflicts/);
+});
