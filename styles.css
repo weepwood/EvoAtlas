@@ -257,3 +257,5 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
 @media(max-width:480px){
   .custom-select-menu{max-width:calc(100vw - 16px)}
 }
+
+.trait-list .unverified-trait-note{border:0;padding:2px 0;color:var(--subtle);font-size:11px;line-height:1.7}
