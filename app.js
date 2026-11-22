@@ -284,14 +284,16 @@
     const box=$('graphStage').getBoundingClientRect();
     if(box.width<10||box.height<10)return;
     const natural=Math.max(.12,Math.min(1.5,Math.min((box.width-44)/state.width,(box.height-40)/state.height)));
-    const isNarrow=box.width<600;
-    if(isNarrow && !showEntireTree){
-      // Tiny all-at-once mobile renders are unreadable. Begin with an
-      // anchored, legible portion and let the user pan or press Fit for all.
-      state.zoom=Math.max(.8,Math.min(1.3,(box.height-34)/state.height));
-      const focus=state.pos.get(state.selected||state.root);
-      state.tx=(state.selected?box.width*.52:34)-(focus?.x||65)*state.zoom;
-      state.ty=(box.height-state.height*state.zoom)/2;
+    const minLegible=box.width<600?.8:.75;
+    if(!showEntireTree && natural<minLegible){
+      // Dense branches are unreadable when every label is scaled into a
+      // thumbnail. Open at a usable local zoom, and keep the Fit button as
+      // the explicit way to view the entire (possibly very large) subtree.
+      state.zoom=minLegible;
+      const point=state.pos.get(state.selected||state.root);
+      const anchorX=box.width*(box.width<600?.20:.24);
+      state.tx=anchorX-(point?.x||65)*state.zoom;
+      state.ty=box.height*.47-(point?.y||state.height/2)*state.zoom;
     }else{
       state.zoom=natural;
       state.tx=(box.width-state.width*natural)/2;
