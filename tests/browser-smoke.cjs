@@ -19,6 +19,9 @@ async function main(){
     await page.goto('http://127.0.0.1:8000/',{waitUntil:'load'});
     await page.waitForSelector('#nodeLayer .node');
     assert.equal(await page.evaluate(()=>window.EVO_TAXA.length),608);
+    assert.equal(await page.locator('#graphStage').getAttribute('data-engine'),'v2');
+    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'time');
+    assert.equal(await page.locator('#layoutModeSelect').inputValue(),'time');
     assert.equal(await page.locator('#speciesA option').count(),496);
     assert.equal(await page.locator('.workspace-heading').count(),0);
     const chevron=page.locator('[data-select="scaleSelect"] .custom-select-chevron');
@@ -87,6 +90,18 @@ async function main(){
     assert.ok(vw>1 && vw<=204,'minimap viewport must be bounded');
     const branchBadges=page.locator('#nodeLayer .node-more');
     assert.ok(await branchBadges.count()>0,'collapsed overview should disclose hidden descendants');
+    const cat=page.locator('#nodeLayer .node[data-id="felidae"]');
+    assert.ok(await cat.count()>0,'cat family visible in overview');
+    assert.equal(await cat.locator('.node-more').count(),1,'folded real branch has visible expand action');
+    const beforeExpansion=await page.locator('#nodeLayer .node').count();
+    await cat.locator('.node-more').dispatchEvent('click');
+    assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),1,
+      'local expansion must show true taxon children without changing root');
+    assert.ok(await page.locator('#nodeLayer .node').count()>beforeExpansion);
+    assert.equal(await page.locator('#headerBreadcrumb [aria-current="location"]').innerText(),'哺乳动物');
+    await page.locator('#nodeLayer .node[data-id="felidae"] .node-more').dispatchEvent('click');
+    assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
+      'collapsing must hide only the family descendants');
     const selectedBefore=await page.locator('#viewport').getAttribute('transform');
     await page.locator('#graphMinimap').click({position:{x:175,y:55}});
     const selectedAfter=await page.locator('#viewport').getAttribute('transform');
@@ -120,6 +135,29 @@ async function main(){
     await page.screenshot({path:'artifacts/evoatlas-tree-desktop.png'});
     await page.locator('#fitTree').click();
     await page.screenshot({path:'artifacts/evoatlas-overview-fit.png'});
+
+    // Structure depth is not an absolute geological clock.
+    await page.locator('[data-select="layoutModeSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'结构树'}).click();
+    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'structure');
+    assert.equal(await page.locator('#scaleSelect').isDisabled(),true);
+    assert.equal(await page.locator('#eventLayer').locator('*').count(),0);
+    await page.waitForTimeout(120);
+    assert.ok((await page.locator('#axisOverlay').innerText()).includes('层级'));
+    await page.screenshot({path:'artifacts/evoatlas-structure-tree.png'});
+
+    await page.locator('[data-select="layoutModeSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'时间树'}).click();
+    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'time');
+    assert.equal(await page.locator('#scaleSelect').isDisabled(),false);
+
+    // A real 23-way fanout must draw exactly one shared stem, not 23 overlapping L paths.
+    await page.locator('#taxonSearch').fill('Actinopterygii');
+    await page.locator('#searchResults .search-result').first().click();
+    await page.locator('#focusNode').click();
+    assert.equal(await page.locator('#edgeLayer .edge-stem[data-owner="actinopterygii"]').count(),1);
+    assert.equal(await page.locator('#edgeLayer .edge-arm[data-owner="actinopterygii"]').count(),23);
+    await page.screenshot({path:'artifacts/evoatlas-actinopterygii-v2.png'});
 
     await page.setViewportSize({width:390,height:844});
     await page.waitForTimeout(350);
