@@ -19,6 +19,9 @@ async function main(){
     await page.goto('http://127.0.0.1:8000/',{waitUntil:'load'});
     await page.waitForSelector('#nodeLayer .node');
     assert.equal(await page.evaluate(()=>window.EVO_TAXA.length),608);
+    assert.equal(await page.locator('#graphStage').getAttribute('data-engine'),'v2');
+    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'time');
+    assert.equal(await page.locator('#layoutModeSelect').inputValue(),'time');
     assert.equal(await page.locator('#speciesA option').count(),496);
     assert.equal(await page.locator('.workspace-heading').count(),0);
     const chevron=page.locator('[data-select="scaleSelect"] .custom-select-chevron');
@@ -78,6 +81,7 @@ async function main(){
     assert.match(await page.locator('#detailLatin').innerText(),/Panthera tigris/);
     assert.match(await page.locator('#detailRank').innerText(),/待核验/);
     await page.locator('[data-root="mammalia"]').click();
+    await page.locator('#nodeLayer .node[data-id="mammalia"]').dispatchEvent('click');
     const overviewCount=await page.locator('#nodeLayer .node').count();
     assert.ok(overviewCount>15 && overviewCount<=70,'overview needs capped LOD');
     assert.ok(await page.locator('#graphMinimap').isVisible(),'overview must have a navigation minimap');
@@ -87,6 +91,18 @@ async function main(){
     assert.ok(vw>1 && vw<=204,'minimap viewport must be bounded');
     const branchBadges=page.locator('#nodeLayer .node-more');
     assert.ok(await branchBadges.count()>0,'collapsed overview should disclose hidden descendants');
+    const cat=page.locator('#nodeLayer .node[data-id="felidae"]');
+    assert.ok(await cat.count()>0,'cat family visible in overview');
+    assert.equal(await cat.locator('.node-more').count(),1,'folded real branch has visible expand action');
+    const beforeExpansion=await page.locator('#nodeLayer .node').count();
+    await cat.locator('.node-more').dispatchEvent('click');
+    assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),1,
+      'local expansion must show true taxon children without changing root');
+    assert.ok(await page.locator('#nodeLayer .node').count()>beforeExpansion);
+    assert.equal(await page.locator('#headerBreadcrumb [aria-current="location"]').innerText(),'哺乳动物');
+    await page.locator('#nodeLayer .node[data-id="felidae"] .node-more').dispatchEvent('click');
+    assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
+      'collapsing must hide only the family descendants');
     const selectedBefore=await page.locator('#viewport').getAttribute('transform');
     await page.locator('#graphMinimap').click({position:{x:175,y:55}});
     const selectedAfter=await page.locator('#viewport').getAttribute('transform');
@@ -121,6 +137,29 @@ async function main(){
     await page.locator('#fitTree').click();
     await page.screenshot({path:'artifacts/evoatlas-overview-fit.png'});
 
+    // Structure depth is not an absolute geological clock.
+    await page.locator('[data-select="layoutModeSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'结构树'}).click();
+    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'structure');
+    assert.equal(await page.locator('#scaleSelect').isDisabled(),true);
+    assert.equal(await page.locator('#eventLayer').locator('*').count(),0);
+    await page.waitForTimeout(120);
+    assert.ok((await page.locator('#axisOverlay').innerText()).includes('层级'));
+    await page.screenshot({path:'artifacts/evoatlas-structure-tree.png'});
+
+    await page.locator('[data-select="layoutModeSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'时间树'}).click();
+    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'time');
+    assert.equal(await page.locator('#scaleSelect').isDisabled(),false);
+
+    // A real 23-way fanout must draw exactly one shared stem, not 23 overlapping L paths.
+    await page.locator('#taxonSearch').fill('Actinopterygii');
+    await page.locator('#searchResults .search-result').first().click();
+    await page.locator('#focusNode').click();
+    assert.equal(await page.locator('#edgeLayer .edge-stem[data-owner="actinopterygii"]').count(),1);
+    assert.equal(await page.locator('#edgeLayer .edge-arm[data-owner="actinopterygii"]').count(),23);
+    await page.screenshot({path:'artifacts/evoatlas-actinopterygii-v2.png'});
+
     await page.setViewportSize({width:390,height:844});
     await page.waitForTimeout(350);
     await page.locator('#openSidebar').click();
@@ -133,6 +172,19 @@ async function main(){
     const zoomMatch=transform.match(/scale\(([-\d.]+)\)/);
     assert.ok(zoomMatch&&Number(zoomMatch[1])>=0.75,'mobile default zoom must preserve label readability');
     await page.screenshot({path:'artifacts/evoatlas-tree-mobile.png'});
+
+    // A URL query flag must offer a usable rollback path to the old renderer.
+    const legacy=await browser.newPage({viewport:{width:1180,height:760}});
+    const legacyErrors=[];
+    legacy.on('pageerror',err=>legacyErrors.push(err.message));
+    await legacy.goto('http://127.0.0.1:8000/?layout=legacy',{waitUntil:'load'});
+    await legacy.waitForSelector('#nodeLayer .node');
+    assert.equal(await legacy.locator('#graphStage').getAttribute('data-engine'),'legacy');
+    assert.equal(await legacy.locator('#layoutModeSelect').isDisabled(),true);
+    await legacy.locator('[data-root="mammalia"]').click();
+    assert.ok(await legacy.locator('#edgeLayer path').count()>10);
+    assert.deepEqual(legacyErrors,[]);
+    await legacy.close();
 
     assert.deepEqual(issues,[],'page should have no uncaught JavaScript errors');
     console.log('PASS: desktop and mobile interactions, data directory, timeline and custom selects.');
