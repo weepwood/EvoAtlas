@@ -21,7 +21,7 @@
     visible:[],parents:new Map(),pos:new Map(),width:1500,height:700,maxMa:4000,tx:0,ty:0,zoom:1,drag:null,
     searchHits:[],searchIndex:0,theme:'system',
     engine:(new URLSearchParams(location.search).get('layout')==='legacy'||!window.EvoLayoutEngine||!window.EvoTreeProjection)?'legacy':'v2',
-    layoutMode:'time',foldedIds:new Set(),expandedIds:new Set(),
+    layoutMode:'structure',foldedIds:new Set(),expandedIds:new Set(),
     layoutSegments:[],layoutMeta:new Map(),layoutDepthStep:145,
     layoutMarginX:58,layoutRightInset:185,layoutPlotWidth:1400};
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -120,7 +120,7 @@
   function buildV2(){
     const view=window.EvoTreeProjection.project(taxa,{
       rootId:state.root,detail:state.detail,selectedId:state.selected,
-      extinct:state.extinct,budget:window.innerWidth<700?34:58,
+      extinct:state.extinct,budget:window.innerWidth<700?20:36,
       foldedIds:state.foldedIds,expandedIds:state.expandedIds
     });
     state.layoutSource=view;
@@ -131,17 +131,17 @@
   }
   function layoutV2(){
     const stage=$('graphStage'),stageWidth=stage.clientWidth||900;
-    state.layoutMarginX=58;state.layoutRightInset=185;state.layoutDepthStep=145;
+    state.layoutMarginX=68;state.layoutRightInset=310;state.layoutDepthStep=165;
     state.layoutPlotWidth=state.layoutMode==='structure'
       ?Math.max(1040,stageWidth*1.2)
       :state.scale==='linear'?Math.max(960,stageWidth*1.18)
       :Math.max(940,stageWidth*1.12);
     const result=window.EvoLayoutEngine.layoutTree(state.layoutSource.records,{
       rootId:state.root,mode:state.layoutMode,timeScale:state.scale,
-      collapsedIds:state.layoutSource.collapsedIds,sort:'input',
+      collapsedIds:state.layoutSource.collapsedIds,sort:'input',alignTips:state.layoutMode==='structure',
       plotWidth:state.layoutPlotWidth,
       marginX:state.layoutMarginX,rightInset:state.layoutRightInset,
-      marginY:58,labelHeight:19,leafGap:13,subtreeGap:25,depthStep:state.layoutDepthStep
+      marginY:64,labelHeight:22,leafGap:16,subtreeGap:27,depthStep:state.layoutDepthStep
     });
     state.layoutMeta=new Map(result.nodes.map(n=>[n.id,n]));
     state.visible=result.nodes.map(n=>byId.get(n.id));
@@ -658,6 +658,7 @@
     hideTip();
     build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
     $('graphStage').dataset.layout=state.layoutMode;
+    $('treeView').dataset.layout=state.layoutMode;
     $('graphStage').dataset.engine=state.engine;
     const structure=state.engine==='v2' && state.layoutMode==='structure';
     $('scaleSelect').disabled=structure;
@@ -769,9 +770,9 @@
     state.selected=null;$('emptyDetail').hidden=false;$('taxonDetail').hidden=true;closeInspector();
   }
   function reset(){
-    Object.assign(state,{root:'luca',scale:'log',layoutMode:'time',detail:'overview',extinct:true,events:true,selected:null});
+    Object.assign(state,{root:'luca',scale:'log',layoutMode:'structure',detail:'overview',extinct:true,events:true,selected:null});
     state.foldedIds.clear();state.expandedIds.clear();
-    $('scaleSelect').value='log';$('layoutModeSelect').value='time';$('detailSelect').value='overview';
+    $('scaleSelect').value='log';$('layoutModeSelect').value='structure';$('detailSelect').value='overview';
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
     window.EvoSelect?.syncAll();
     $('taxonSearch').value='';$('searchResults').hidden=true;
