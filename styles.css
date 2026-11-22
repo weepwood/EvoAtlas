@@ -316,3 +316,50 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
 .axis-overlay .axis-fixed-caption{fill:var(--muted);font-size:10px;font-weight:650}
 .axis-overlay .axis-fixed-label{fill:var(--muted);font-size:11px;font-weight:500}
 .axis-overlay .axis-fixed-tick{stroke:var(--line-strong);stroke-width:1}
+
+
+/* Layout Engine V2: geometry carries the hierarchy, not decorative curves. */
+.graph-stage[data-engine=v2] .edge-stem{
+  stroke-width:1.85px;
+  stroke:var(--ancestor);
+  opacity:.79;
+  stroke-linecap:square;
+}
+.graph-stage[data-engine=v2] .edge-arm{
+  stroke-width:1.2px;
+  opacity:.65;
+}
+.graph-stage[data-engine=v2] .edge.active-path,
+.graph-stage[data-engine=v2] .edge.hover-path{
+  stroke:var(--primary);
+  stroke-width:2.45px;
+  opacity:1;
+}
+.graph-stage[data-engine=v2] .node-more{
+  opacity:1;
+  pointer-events:auto;
+}
+.graph-stage[data-engine=v2] .node-more.expanded{
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .12s ease;
+}
+.graph-stage[data-engine=v2] .node:hover .node-more.expanded,
+.graph-stage[data-engine=v2] .node:focus-within .node-more.expanded,
+.graph-stage[data-engine=v2] .node.selected .node-more.expanded{
+  opacity:1;
+  pointer-events:auto;
+}
+.graph-stage[data-engine=v2] .node-more.expanded rect{
+  fill:var(--surface-alt);
+  stroke:var(--line);
+}
+.graph-stage[data-layout=structure] .event-band,
+.graph-stage[data-layout=structure] .event-line{display:none}
+.viewer-options select:disabled + .custom-select .custom-select-trigger{
+  opacity:.55;
+  cursor:not-allowed;
+}
+@media(prefers-reduced-motion:reduce){
+  .graph-stage[data-engine=v2] .node-more.expanded{transition:none}
+}
