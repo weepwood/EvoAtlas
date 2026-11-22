@@ -36,10 +36,22 @@
 
     const value = document.createElement('span');
     value.className = 'custom-select-value';
-    const arrow = document.createElement('span');
-    arrow.className = 'custom-select-chevron';
+    // Use a deterministic Lucide-style SVG rather than a font-dependent glyph.
+    // The text character '⌄' varied in weight and baseline across platforms.
+    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    arrow.setAttribute('class', 'custom-select-chevron');
+    arrow.setAttribute('width', '16');
+    arrow.setAttribute('height', '16');
+    arrow.setAttribute('viewBox', '0 0 24 24');
+    arrow.setAttribute('fill', 'none');
+    arrow.setAttribute('stroke', 'currentColor');
+    arrow.setAttribute('stroke-width', '1.8');
+    arrow.setAttribute('stroke-linecap', 'round');
+    arrow.setAttribute('stroke-linejoin', 'round');
     arrow.setAttribute('aria-hidden', 'true');
-    arrow.textContent = '⌄';
+    const chevronPath = document.createElementNS('http://www.w3.org/2000/svg','path');
+    chevronPath.setAttribute('d','m6 9 6 6 6-6');
+    arrow.append(chevronPath);
     trigger.append(value, arrow);
     root.append(trigger);
     select.insertAdjacentElement('afterend', root);
