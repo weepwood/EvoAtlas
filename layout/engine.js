@@ -156,19 +156,18 @@
     return Number.isFinite(record.ageMa)?record.ageMa:0;
   }
 
-  function placeHorizontal(nodes,config){
-    const maxAge=Math.max(1,...nodes.map(n=>ageOf(n.data)));
-    const available=config.plotWidth-config.marginX-config.rightInset;
+  function placeHorizontal(nodes,recordsById,config){
+    const maxAge=Math.max(1,...nodes.map(n=>ageOf(recordsById.get(n.id))));
+    const usable=config.plotWidth-config.marginX-config.rightInset;
     for(const n of nodes){
       if(config.mode==='structure'){
         n.x=config.marginX+n.depth*config.depthStep;
-        continue;
+      }else{
+        const ma=ageOf(recordsById.get(n.id));
+        const fraction=config.timeScale==='linear'
+          ?1-ma/maxAge:1-Math.log10(ma+1)/Math.log10(maxAge+1);
+        n.x=config.marginX+usable*fraction;
       }
-      const ma=ageOf(n.data);
-      const fraction=config.timeScale==='linear'
-        ? 1-ma/maxAge
-        : 1-Math.log10(ma+1)/Math.log10(maxAge+1);
-      n.x=config.marginX+available*fraction;
     }
     return {maxAge,axisKind:config.mode==='time'?'teaching-time':null};
   }
@@ -215,26 +214,15 @@
         rank:p.data.rank||'',status:p.data.status||'',
         collapsed:p.collapsed,hiddenDescendants:p.hiddenDescendants,
         totalDescendants:p.totalDescendants,
-        unresolvedFanout:p.children.length>2
+        multiChild:p.children.length>2
       });
       p.children.forEach(c=>flatten(c,p.id));
     }
     flatten(projected);
     const minY=Math.min(...nodes.map(n=>n.y));
     for(const n of nodes)n.y+=config.marginY-minY;
-    const time=placeHorizontal(nodes.map(n=>({...n,data:records.find(r=>r.id===n.id)})),config);
-    const rawIndex=new Map(records.map(r=>[r.id,r]));
-    for(const n of nodes){
-      if(config.mode==='structure'){
-        n.x=config.marginX+n.depth*config.depthStep;
-      }else{
-        const ma=ageOf(rawIndex.get(n.id));
-        const width=config.plotWidth-config.marginX-config.rightInset;
-        const fraction=config.timeScale==='linear'
-          ?1-ma/time.maxAge:1-Math.log10(ma+1)/Math.log10(time.maxAge+1);
-        n.x=config.marginX+width*fraction;
-      }
-    }
+    const rawIndex=new Map(records.map(record=>[record.id,record]));
+    const time=placeHorizontal(nodes,rawIndex,config);
     const segments=buildSegments(nodes);
     const maxX=Math.max(...nodes.map(n=>n.x)),maxY=Math.max(...nodes.map(n=>n.y));
     return {
