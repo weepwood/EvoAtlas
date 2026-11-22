@@ -1,77 +1,475 @@
 (() => {
   'use strict';
-  const taxa = window.EVO_TAXA || [];
-  const byId = new Map(taxa.map(x => [x.id, x]));
-  const kids = new Map(taxa.map(x => [x.id, []]));
-  taxa.forEach(x => x.parent && kids.get(x.parent)?.push(x.id));
+  const taxa = Array.isArray(window.EVO_TAXA) ? window.EVO_TAXA : [];
+  const research = window.EVO_RESEARCH || {sources:[],topics:[]};
+  const byId = new Map(taxa.map(n => [n.id,n]));
+  const children = new Map(taxa.map(n => [n.id,[]]));
+  taxa.forEach(n => { if(n.parent && children.has(n.parent)) children.get(n.parent).push(n.id); });
   const $ = id => document.getElementById(id);
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const S = {
-    root:'luca', scale:'log', detail:'full', extinct:true, events:true, selected:null,
-    visible:[], parent:new Map(), pos:new Map(), width:1900, height:900, tx:0, ty:0, zoom:1, drag:null
+  const NS = 'http://www.w3.org/2000/svg';
+  const sourceByCode = new Map(research.sources.map(s => [s.code,s]));
+  const FOCUS = {luca:'全部生命',bacteria:'细菌',archaea:'古菌',eukaryota:'真核生物',archaeplastida:'植物谱系',fungi:'真菌',metazoa:'动物',vertebrata:'脊椎动物',mammalia:'哺乳动物',primates:'灵长类',hominina:'人类谱系'};
+  const events = [
+    {ma:443.8,name:'奥陶纪末'},
+    {ma:372,name:'晚泥盆纪'},
+    {ma:251.9,name:'二叠纪末'},
+    {ma:201.4,name:'三叠纪末'},
+    {ma:66,name:'白垩纪末'}
+  ];
+  const featured = new Set(['sapiens','pan','neanderthal','australopithecus','gallus','tyrannosaurus','archaeopteryx','tiktaalik','arabidopsis','saccharomyces','canis','felis','balaenoptera','mus','pongo','gorilla','danaus','danio','ornithorhynchus','drosophila']);
+  const state = {view:'tree',root:'luca',scale:'log',detail:'overview',extinct:true,events:true,selected:null,
+    visible:[],parents:new Map(),pos:new Map(),width:1500,height:700,maxMa:4000,tx:0,ty:0,zoom:1,drag:null,
+    searchHits:[],searchIndex:0,theme:'system'};
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const esc = x => String(x ?? '').replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const make = (tag,attributes={}) => {
+    const el = document.createElementNS(NS,tag);
+    Object.entries(attributes).forEach(([key,value]) => el.setAttribute(key,String(value)));
+    return el;
   };
-  const sourceNames = {col:'Catalogue of Life',gbif:'GBIF',opentree:'Open Tree of Life',timetree:'TimeTree',ncbi:'NCBI Taxonomy',pbdb:'Paleobiology Database',eol:'Encyclopedia of Life'};
-  const focusNames = {luca:'全部生命',bacteria:'细菌域',archaea:'古菌域',eukaryota:'真核生物',archaeplastida:'植物谱系',fungi:'真菌',metazoa:'动物',vertebrata:'脊椎动物',mammalia:'哺乳动物',primates:'灵长类',hominina:'人类谱系'};
-  const overviewRanks = new Set(['域','界','门','总群','总支','纲','目','科','属','种','共同祖先']);
-  const important = new Set(['arabidopsis','saccharomyces','danaus','danio','tiktaalik','tyrannosaurus','archaeopteryx','gallus','canis','felis','balaenoptera','mus','hylobates','pongo','gorilla','pan','australopithecus','neanderthal','sapiens']);
-  const descendants = root => { const out=[], stack=[root]; while(stack.length){const id=stack.pop(), n=byId.get(id); if(!n)continue; out.push(n); [...(kids.get(id)||[])].reverse().forEach(k=>stack.push(k));} return out; };
-  const isDesc = (id,root) => { let n=byId.get(id); while(n){if(n.id===root)return true;n=n.parent?byId.get(n.parent):null;} return false; };
-  const path = id => { const a=[]; let n=byId.get(id); while(n){a.push(n); n=n.parent?byId.get(n.parent):null;} return a; };
-  const age = n => n.status==='extinct' && Number.isFinite(n.lastMa) ? n.lastMa : (n.ageMa||0);
-  const fmtAge = v => v===0?'现生':v>=1000?`约 ${(v/1000).toFixed(v>=10000?0:1)} 十亿年前`:v<1?`约 ${Math.round(v*1000)} 千年前`:`约 ${Number.isInteger(v)?v:v.toFixed(1)} 百万年前`;
-  const fmtNodeAge = n => n.status==='extinct'&&Number.isFinite(n.firstMa)?`${n.firstMa}${n.firstMa===n.lastMa?'':`–${n.lastMa}`} Ma`:fmtAge(n.ageMa);
-  const esc = s => String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-  const make = (tag,attrs={}) => { const e=document.createElementNS(svgNS,tag); Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v)); return e; };
-  function build(){
-    const candidates=descendants(S.root).filter(n=>S.extinct||n.status!=='extinct');
-    const include=new Set();
-    candidates.forEach(n=>{if(S.detail==='full'||overviewRanks.has(n.rank)||important.has(n.id)||n.id===S.root)include.add(n.id)});
-    S.visible=[]; S.parent=new Map();
-    candidates.forEach(n=>{if(!include.has(n.id))return; let p=n.parent; while(p&&!include.has(p))p=byId.get(p)?.parent; S.parent.set(n.id,n.id===S.root?null:p||null); S.visible.push(n)});
+  function path(id) {
+    const result=[],seen=new Set();let n=byId.get(id);
+    while(n && !seen.has(n.id)){result.push(n);seen.add(n.id);n=byId.get(n.parent);}
+    return result;
   }
-  function xFor(v,max){const left=70,right=190,u=S.width-left-right;let t=S.scale==='linear'?1-v/Math.max(max,1):1-Math.log10(v+1)/Math.log10(max+1);return left+Math.max(0,Math.min(1,t))*u;}
-  function layout(){
-    const vk=new Map(S.visible.map(n=>[n.id,[]])); S.visible.forEach(n=>{const p=S.parent.get(n.id); if(p)vk.get(p)?.push(n.id)});
-    let leaf=0; const y=new Map(), gap=S.detail==='full'?32:43, top=48;
-    const setY=id=>{const c=vk.get(id)||[]; if(!c.length){const v=top+leaf++*gap;y.set(id,v);return v;}const vals=c.map(setY),v=vals.reduce((a,b)=>a+b,0)/vals.length;y.set(id,v);return v;}; setY(S.root);
-    S.height=Math.max(760,top*2+Math.max(1,leaf-1)*gap); S.width=S.scale==='linear'?1800:1900;
-    const max=Math.max(...S.visible.map(age),age(byId.get(S.root))); S.pos=new Map(S.visible.map(n=>[n.id,{x:xFor(age(n),max),y:y.get(n.id)||top}])); return max;
+  const inside = (id,root) => path(id).some(n => n.id===root);
+  function descendants(root){
+    const out=[],stack=[root];
+    while(stack.length){const id=stack.pop(),n=byId.get(id);if(!n)continue;out.push(n);[...(children.get(id)||[])].reverse().forEach(x=>stack.push(x));}
+    return out;
   }
-  function apply(){ $('viewport').setAttribute('transform',`translate(${S.tx} ${S.ty}) scale(${S.zoom})`); }
-  function fit(){const r=$('graphStage').getBoundingClientRect(),k=Math.max(.12,Math.min(1.15,Math.min((r.width-55)/S.width,(r.height-55)/S.height)));S.zoom=k;S.tx=(r.width-S.width*k)/2;S.ty=(r.height-S.height*k)/2;apply();}
-  function render(fitNow=false){
-    build(); const max=layout(); const edge=$('edgeLayer'),nodes=$('nodeLayer'),events=$('eventLayer'); edge.replaceChildren();nodes.replaceChildren();events.replaceChildren();
-    if(S.events)[[444,'奥陶纪末'],[372,'晚泥盆纪'],[252,'二叠纪末'],[201,'三叠纪末'],[66,'白垩纪末']].filter(x=>x[0]<=max).forEach(([v,name])=>{const x=xFor(v,max);events.append(make('rect',{x:x-4,y:0,width:8,height:S.height,class:'event-band',fill:'var(--danger)'}),make('line',{x1:x,x2:x,y1:0,y2:S.height,class:'event-line'}));const t=make('text',{x:x+6,y:18,class:'event-label'});t.textContent=`${name} · ${v} Ma`;events.append(t);});
-    S.visible.forEach(n=>{const p=S.parent.get(n.id);if(!p)return;const a=S.pos.get(p),b=S.pos.get(n.id),m=a.x+Math.max(13,(b.x-a.x)*.44),d=`M ${a.x} ${a.y} H ${m} V ${b.y} H ${b.x}`;edge.append(make('path',{d,class:`edge ${n.confidence==='low'?'low':''} ${S.selected&&path(S.selected).some(x=>x.id===n.id)?'highlight':''}`}));});
-    S.visible.forEach(n=>{const p=S.pos.get(n.id),g=make('g',{class:`node ${n.status} ${S.selected===n.id?'selected':''}`,transform:`translate(${p.x} ${p.y})`,tabindex:'0','data-id':n.id});g.append(make('circle',{r:n.id===S.root?7:n.rank==='种'?4.8:5.4}));const t=make('text',{x:10,y:3.3});t.textContent=(n.rank==='种'&&n.emoji?`${n.emoji} `:'')+n.zh;g.append(t);g.addEventListener('click',e=>{e.stopPropagation();select(n.id)});g.addEventListener('mouseenter',e=>tip(e,n));g.addEventListener('mousemove',moveTip);g.addEventListener('mouseleave',()=>{$('tooltip').hidden=true});nodes.append(g);});
-    $('graphTitle').textContent=focusNames[S.root]||byId.get(S.root)?.zh||'生命之树';$('graphSubtitle').textContent=`${S.visible.length} 个可见节点 · ${fmtAge(max).replace('约 ','')}`;timeline(max);if(fitNow)requestAnimationFrame(fit);else apply();
+  const timeOf = n => n.status==='extinct' && Number.isFinite(n.lastMa) ? n.lastMa : (Number(n.ageMa)||0);
+  function formatMa(value) {
+    if (!Number.isFinite(value)) return '未提供';
+    if (value===0) return '现生';
+    if (value>=1000) return '约 '+(value/1000).toFixed(1)+' 十亿年前';
+    if (value<1) return '约 '+Math.round(value*1000)+' 千年前';
+    return '约 '+Number(value.toFixed(1))+' 百万年前';
   }
-  function timeline(max){const box=$('timelineScale');box.replaceChildren();[0,1,10,66,252,541,1000,2000,3000,4000,max].filter((v,i,a)=>v<=max&&a.indexOf(v)===i).sort((a,b)=>b-a).forEach(v=>{const s=document.createElement('span');s.className='timeline-tick';s.style.left=`${xFor(v,max)/S.width*100}%`;s.textContent=v?fmtAge(v).replace('约 ',''):'现在';box.append(s)});}
-  function select(id,center=true){if(!isDesc(id,S.root)){S.root='luca';$('cladeSelect').value='luca'}S.selected=id;render();detail(byId.get(id));if(center){const p=S.pos.get(id),r=$('graphStage').getBoundingClientRect();if(p){S.zoom=Math.max(S.zoom,1);S.tx=r.width/2-p.x*S.zoom;S.ty=r.height/2-p.y*S.zoom;apply();}}}
-  function detail(n){$('emptyDetail').hidden=true;$('taxonDetail').hidden=false;$('detailEmoji').textContent=n.emoji||'◆';$('detailRank').textContent=`${n.rank} · ${n.status==='extinct'?'灭绝类群':n.status==='ancestral'?'祖先/干群节点':'现生类群'}`;$('detailName').textContent=n.zh;$('detailLatin').textContent=n.latin;$('detailSummary').textContent=n.summary;$('detailAge').textContent=fmtNodeAge(n);$('detailStatus').textContent=n.status==='extinct'?'已灭绝':n.status==='ancestral'?'概念节点':'现生';$('confidenceBadge').textContent={high:'较高置信度',medium:'中等置信度',low:'不确定性较高'}[n.confidence]||'待评估';
-    $('traitList').replaceChildren(...(n.traits||[]).map(x=>Object.assign(document.createElement('span'),{textContent:x})));
-    const line=$('lineage');line.replaceChildren();path(n.id).reverse().forEach((x,i,a)=>{const b=document.createElement('button');b.textContent=x.zh;b.onclick=()=>select(x.id);line.append(b);if(i<a.length-1){const q=document.createElement('i');q.textContent='›';line.append(q)}});
-    $('detailSources').replaceChildren(...(n.sources||[]).map(x=>Object.assign(document.createElement('span'),{textContent:sourceNames[x]||x})));
-    $('addToCompare').hidden=n.rank!=='种';$('addToCompare').onclick=()=>{$('speciesA').value=n.id;switchView('compare');compare()};
+  function nodeAge(n){
+    if(n.status==='extinct' && Number.isFinite(n.firstMa) && Number.isFinite(n.lastMa)){
+      return n.firstMa===n.lastMa ? n.firstMa+' Ma（代表性记录）' : n.firstMa+'–'+n.lastMa+' Ma（化石出现区间）';
+    }
+    return timeOf(n)===0?'现生（0 Ma）':Number(timeOf(n).toFixed(1))+' Ma（教学近似）';
   }
-  function tip(e,n){const t=$('tooltip');t.hidden=false;t.innerHTML=`<b>${esc(n.zh)}</b><em>${esc(n.latin)}</em><small>${esc(n.rank)} · ${esc(fmtNodeAge(n))}</small>`;moveTip(e)}
-  function moveTip(e){const t=$('tooltip');t.style.left=`${e.clientX+13}px`;t.style.top=`${e.clientY+13}px`;}
-  function search(q){const box=$('searchResults'),s=q.trim().toLowerCase();if(!s){box.hidden=true;return;}const hits=taxa.filter(n=>`${n.zh} ${n.latin} ${n.rank}`.toLowerCase().includes(s)).slice(0,9);box.replaceChildren(...hits.map(n=>{const b=document.createElement('button');b.className='search-result';b.innerHTML=`<i>${n.emoji||'◆'}</i><span>${esc(n.zh)}<small>${esc(n.latin)} · ${esc(n.rank)}</small></span>`;b.onclick=()=>{box.hidden=true;$('taxonSearch').value=n.zh;select(n.id)};return b}));box.hidden=!hits.length;}
-  function lca(a,b){const ids=new Set(path(a).map(x=>x.id));return path(b).find(x=>ids.has(x.id))||byId.get('luca');}
-  function compare(){const a=byId.get($('speciesA').value),b=byId.get($('speciesB').value);if(!a||!b)return;const c=lca(a.id,b.id),branch=id=>path(id).reverse().slice(path(c.id).length);const col=(x,arr)=>`<div class="path-column"><div class="species-card"><span>${x.emoji||'◆'}</span><div><h4>${esc(x.zh)}</h4><em>${esc(x.latin)}</em></div></div><div class="path-list">${(arr.length?arr:[x]).map(y=>`<div class="path-item"><b>${esc(y.zh)}</b><small>${esc(y.rank)} · ${esc(fmtNodeAge(y))}</small></div>`).join('')}</div></div>`;$('compareResult').innerHTML=`<div class="lca-banner"><small>最近共同祖先节点</small><h3>${esc(c.zh)}</h3><em>${esc(c.latin)}</em><div class="compare-meta"><span>${esc(c.rank)}</span><span>${esc(fmtNodeAge(c))}</span><span>${a.id===b.id?'相同物种':'两条近缘或远缘分支'}</span></div></div><div class="path-columns">${col(a,branch(a.id))}${col(b,branch(b.id))}</div>`;}
-  function switchView(v){document.querySelectorAll('.view-panel').forEach(x=>x.classList.toggle('active',x.dataset.panel===v));document.querySelectorAll('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===v));if(v==='tree')requestAnimationFrame(fit);if(v==='compare')compare();document.querySelector(`[data-panel="${v}"]`)?.scrollIntoView({behavior:'smooth',block:'start'});}
-  function sources(){const list=[['Catalogue of Life','分类名称与版本','全球物种接受名、异名和分类清单。'],['GBIF','分类与分布','名称匹配、分类主干与物种出现记录。'],['Open Tree of Life','系统发育拓扑','综合已发表系统发育树并保留未解析关系。'],['TimeTree','分化时间','分子钟研究的时间估计与范围。'],['NCBI Taxonomy','基因组关联','连接分类节点、基因组与序列数据库。'],['Paleobiology Database','化石记录','化石出现、地层年代和地理位置。'],['Encyclopedia of Life','性状与生态','形态、生态关系和描述信息。'],['Wikimedia Commons','开放媒体','图片、作者与许可证元数据。']];$('sourceGrid').replaceChildren(...list.map(([n,t,d],i)=>{const a=document.createElement('article');a.className='source-card';a.innerHTML=`<header><i>${n[0]}</i><h3>${n}</h3></header><p>${d}</p><footer><span>${t}</span><span>数据层 ${i+1}</span></footer>`;return a}));}
+  function build() {
+    const candidates=descendants(state.root).filter(n=>state.extinct || n.status!=='extinct');
+    const include = new Set([state.root]);
+    candidates.forEach(n=>{
+      if(state.detail==='full'){include.add(n.id);return;}
+      const relativeDepth=path(n.id).findIndex(x=>x.id===state.root);
+      if(relativeDepth>=0 && (relativeDepth<=3 || featured.has(n.id) || n.id===state.selected)) include.add(n.id);
+    });
+    if(state.selected && inside(state.selected,state.root)){
+      path(state.selected).forEach(n=>{if(inside(n.id,state.root))include.add(n.id);});
+    }
+    state.visible=[];state.parents=new Map();
+    candidates.forEach(n=>{
+      if(!include.has(n.id))return;
+      let p=n.parent;
+      while(p && !include.has(p))p=byId.get(p)?.parent;
+      state.parents.set(n.id,n.id===state.root?null:p||null);
+      state.visible.push(n);
+    });
+  }
+  function xFor(ma){
+    const usable=state.width-230;
+    const ratio=state.scale==='linear' ? 1-ma/Math.max(1,state.maxMa) : 1-Math.log10(ma+1)/Math.log10(state.maxMa+1);
+    return 62+usable*Math.max(0,Math.min(1,ratio));
+  }
+  function layout() {
+    const branches=new Map(state.visible.map(n=>[n.id,[]]));
+    state.visible.forEach(n=>{const p=state.parents.get(n.id);if(p && branches.has(p))branches.get(p).push(n.id);});
+    let leaves=0;const yy=new Map(),top=75,gap=state.detail==='full'?40:49;
+    const setY=id=>{
+      const kids=branches.get(id)||[];
+      if(!kids.length){const value=top+leaves++*gap;yy.set(id,value);return value;}
+      const values=kids.map(setY),value=(values[0]+values[values.length-1])/2;
+      yy.set(id,value);return value;
+    };
+    if(branches.has(state.root))setY(state.root);
+    state.height=Math.max(490,top+Math.max(1,leaves-1)*gap+90);
+    state.width=state.detail==='full'?1640:1400;
+    state.maxMa=Math.max(...state.visible.map(timeOf),timeOf(byId.get(state.root))||1,1);
+    state.pos=new Map(state.visible.map(n=>[n.id,{x:xFor(timeOf(n)),y:yy.get(n.id)||top}]));
+  }
+  const renderLabel=(text,x,y,cl='axis-label')=>{const el=make('text',{x,y,class:cl});el.textContent=text;return el;};
+  function drawGrid() {
+    const layer=$('gridLayer');layer.replaceChildren();
+    const ticks=[0,1,10,66,145,252,541,1000,2000,3000,4000,state.maxMa]
+      .filter((v,i,a)=>v<=state.maxMa && a.indexOf(v)===i).sort((a,b)=>b-a);
+    ticks.forEach(ma=>{
+      const x=xFor(ma);
+      layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'grid-line'}));
+      layer.append(renderLabel(ma===0?'现在':(ma>=1000?(ma/1000)+' Ga':ma+' Ma'),x+3,30));
+    });
+    layer.append(make('line',{x1:50,y1:43,x2:state.width-155,y2:43,class:'axis-line'}));
+  }
+  function drawEvents() {
+    const layer=$('eventLayer');layer.replaceChildren();
+    if(!state.events)return;
+    events.filter(e=>e.ma<=state.maxMa).forEach((e,i)=>{
+      const x=xFor(e.ma);
+      layer.append(make('rect',{x:x-7,y:43,width:14,height:state.height-65,class:'event-band'}));
+      layer.append(make('line',{x1:x,y1:43,x2:x,y2:state.height-25,class:'event-line'}));
+      layer.append(renderLabel(e.name,x+7,59+(i%2)*14,'event-label'));
+    });
+  }
+  function drawTree(){
+    const edges=$('edgeLayer'),nodes=$('nodeLayer');
+    edges.replaceChildren();nodes.replaceChildren();
+    const activePath=new Set(state.selected?path(state.selected).map(n=>n.id):[]);
+    state.visible.forEach(n=>{
+      const parent=state.parents.get(n.id);if(!parent)return;
+      const a=state.pos.get(parent),b=state.pos.get(n.id);if(!a||!b)return;
+      const middle=a.x+Math.max(12,(b.x-a.x)*.38);
+      const d='M '+a.x+' '+a.y+' H '+middle+' V '+b.y+' H '+b.x;
+      edges.append(make('path',{d,class:'edge'+(activePath.has(n.id)&&activePath.has(parent)?' active-path':'')}));
+    });
+    state.visible.forEach(n=>{
+      const p=state.pos.get(n.id);if(!p)return;
+      const node=make('g',{class:'node '+n.status+(n.id===state.selected?' selected':''),transform:'translate('+p.x+' '+p.y+')','data-id':n.id,tabindex:0,role:'button','aria-label':n.zh+'，'+n.rank+'，'+nodeAge(n)});
+      node.append(make('circle',{class:'node-halo',r:12}),make('circle',{class:'node-core',r:n.id===state.root?6:4.8}));
+      const label=make('text',{class:'node-label',x:12,y:4});
+      label.textContent=n.zh;
+      node.append(label);
+      node.addEventListener('click',e=>{e.stopPropagation();selectNode(n.id);});
+      node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectNode(n.id);}});
+      node.addEventListener('mouseenter',e=>showTip(e,n));
+      node.addEventListener('mousemove',moveTip);
+      node.addEventListener('mouseleave',hideTip);
+      node.addEventListener('focus',()=>node.classList.add('keyboard-focus'));
+      node.addEventListener('blur',()=>node.classList.remove('keyboard-focus'));
+      nodes.append(node);
+    });
+  }
+  function applyTransform(){$('viewport').setAttribute('transform','translate('+state.tx+' '+state.ty+') scale('+state.zoom+')');}
+  function fit(){
+    if(state.view!=='tree')return;
+    const box=$('graphStage').getBoundingClientRect();
+    if(box.width<10||box.height<10)return;
+    const zoom=Math.max(.12,Math.min(1.5,Math.min((box.width-44)/state.width,(box.height-40)/state.height)));
+    state.zoom=zoom;
+    state.tx=(box.width-state.width*zoom)/2;
+    state.ty=(box.height-state.height*zoom)/2;
+    applyTransform();
+  }
+  function centerNode(id,minimumZoom=.85){
+    const point=state.pos.get(id),box=$('graphStage').getBoundingClientRect();
+    if(!point||box.width<10)return;
+    state.zoom=Math.max(state.zoom,minimumZoom);
+    state.tx=Math.min(box.width*.37,box.width*.42-point.x*state.zoom);
+    state.ty=box.height*.5-point.y*state.zoom;
+    applyTransform();
+  }
+  function zoomAt(factor,cx,cy){
+    const box=$('graphStage').getBoundingClientRect();
+    const px=(cx??box.left+box.width/2)-box.left,py=(cy??box.top+box.height/2)-box.top;
+    const old=state.zoom,next=Math.max(.12,Math.min(4,old*factor));
+    state.tx=px-(px-state.tx)*next/old;
+    state.ty=py-(py-state.ty)*next/old;
+    state.zoom=next;applyTransform();
+  }
+  function updateClades(){
+    document.querySelectorAll('[data-root]').forEach(el=>{
+      const active=el.dataset.root===state.root;el.classList.toggle('active',active);
+      if(active)el.setAttribute('aria-current','true');else el.removeAttribute('aria-current');
+    });
+  }
+  function updateCrumbs(){
+    const box=$('crumbs');box.replaceChildren();
+    const ancestors=path(state.root).reverse();
+    ancestors.forEach((n,i)=>{
+      if(i){const s=document.createElement('span');s.textContent=' / ';box.append(s);}
+      const b=document.createElement('button');b.textContent=n.zh;b.dataset.focus=n.id;
+      b.addEventListener('click',()=>focusRoot(n.id));box.append(b);
+    });
+  }
+  function render(fitNow=false) {
+    build();layout();drawGrid();drawEvents();drawTree();
+    const title=FOCUS[state.root]||byId.get(state.root)?.zh||'生命之树';
+    $('graphTitle').textContent=title;
+    $('graphSubtitle').textContent='教学示意 · '+state.visible.length+' 个可见节点 · 时间跨度 '+formatMa(state.maxMa).replace('约 ','');
+    $('visibleCount').textContent=state.visible.length+' 个节点';
+    $('graphEmpty').hidden=state.visible.length>0;
+    updateClades();updateCrumbs();
+    if(fitNow)requestAnimationFrame(fit);else applyTransform();
+  }
+  function closeInspector(){$('detailPanel').classList.remove('open');}
+  function openInspector(){if(window.matchMedia('(max-width: 1080px)').matches)$('detailPanel').classList.add('open');}
+  function hideTip(){$('tooltip').hidden=true;}
+  function moveTip(e){
+    const tip=$('tooltip'),offset=14;
+    tip.style.left=Math.min(window.innerWidth-250,e.clientX+offset)+'px';
+    tip.style.top=Math.max(8,Math.min(window.innerHeight-85,e.clientY+offset))+'px';
+  }
+  function showTip(e,n){
+    const tip=$('tooltip');
+    tip.innerHTML='<strong>'+esc(n.zh)+'</strong><em>'+esc(n.latin)+'</em><small>'+esc(n.rank)+' · '+esc(nodeAge(n))+'</small>';
+    tip.hidden=false;moveTip(e);
+  }
+  function syncUrl(){
+    const part=state.view==='tree'?'tree'+(state.root!=='luca'||state.selected?'?'+new URLSearchParams({
+      ...(state.root!=='luca'?{root:state.root}:{}),
+      ...(state.selected?{node:state.selected}:{})
+    }).toString():''):state.view;
+    try{history.replaceState(null,'','#'+part);}catch{}
+  }
+  function selectNode(id,{center=true,open=true}={}){
+    const n=byId.get(id);if(!n)return;
+    if(!inside(id,state.root))state.root='luca';
+    if(!state.extinct && n.status==='extinct'){$('extinctToggle').checked=true;state.extinct=true;}
+    state.selected=id;
+    if(state.view!=='tree')switchView('tree',false);
+    render(false);
+    if(center)centerNode(id);
+    showDetail(n);
+    if(open)openInspector();
+    hideTip();syncUrl();
+  }
+  function focusRoot(id){
+    if(!byId.has(id))return;
+    state.root=id;
+    if(state.selected&&!inside(state.selected,id))state.selected=null;
+    render(true);
+    if(state.selected)showDetail(byId.get(state.selected));
+    syncUrl();closeSidebar();
+  }
+  function showDetail(n){
+    $('emptyDetail').hidden=true;$('taxonDetail').hidden=false;
+    const kind=n.status==='extinct'?'化石 / 灭绝类群':n.status==='extant'?'现生物种':'支系或示意分叉';
+    $('detailRank').textContent=n.rank+'  ·  '+kind;
+    $('detailName').textContent=n.zh;
+    $('detailLatin').textContent=n.latin;
+    $('detailSummary').textContent=n.summary;
+    $('detailAge').textContent=nodeAge(n);
+    $('detailStatus').textContent=n.status==='extinct'?'灭绝':n.status==='extant'?'现生':'内部支系';
+    $('traitList').replaceChildren(...(n.traits||[]).map(s=>{const el=document.createElement('span');el.textContent=s;return el;}));
+    const lineage=$('lineage');lineage.replaceChildren();
+    path(n.id).reverse().forEach((member,i)=>{
+      if(i){const sep=document.createElement('i');sep.textContent='›';lineage.append(sep);}
+      const button=document.createElement('button');button.textContent=member.zh;
+      button.addEventListener('click',()=>selectNode(member.id));lineage.append(button);
+    });
+    const src=$('detailSources');src.replaceChildren();
+    (n.sources||[]).forEach(code=>{
+      const record=sourceByCode.get(code);
+      if(!record)return;
+      const anchor=document.createElement('a');anchor.href=record.url;anchor.textContent=record.name;
+      anchor.target='_blank';anchor.rel='noopener noreferrer';src.append(anchor);
+    });
+    $('focusNode').hidden=!(children.get(n.id)||[]).length;
+    $('focusNode').onclick=()=>{focusRoot(n.id);closeInspector();};
+    $('addToCompare').hidden=n.rank!=='种';
+    $('addToCompare').onclick=()=>{
+      $('speciesA').value=n.id;
+      if($('speciesB').value===n.id){const other=taxa.find(x=>x.rank==='种'&&x.id!==n.id);if(other)$('speciesB').value=other.id;}
+      switchView('compare');compare();
+    };
+  }
+  function clearSelection(){
+    state.selected=null;$('emptyDetail').hidden=false;$('taxonDetail').hidden=true;closeInspector();
+  }
+  function reset(){
+    Object.assign(state,{root:'luca',scale:'log',detail:'overview',extinct:true,events:true,selected:null});
+    $('scaleSelect').value='log';$('detailSelect').value='overview';
+    $('extinctToggle').checked=true;$('eventToggle').checked=true;
+    $('taxonSearch').value='';$('searchResults').hidden=true;
+    clearSelection();switchView('tree',false);render(true);syncUrl();
+  }
+  function matchTaxa(query){
+    const lower=query.trim().toLocaleLowerCase();
+    if(!lower)return [];
+    return taxa.map(n=>{
+      const zh=n.zh.toLocaleLowerCase(),latin=n.latin.toLocaleLowerCase();
+      let rank=0;
+      if(zh===lower||latin===lower)rank=5;
+      else if(zh.startsWith(lower)||latin.startsWith(lower))rank=4;
+      else if(zh.includes(lower)||latin.includes(lower))rank=3;
+      else if((n.rank||'').includes(lower))rank=1;
+      return {n,rank};
+    }).filter(x=>x.rank).sort((a,b)=>b.rank-a.rank||a.n.zh.localeCompare(b.n.zh,'zh-CN')).slice(0,10).map(x=>x.n);
+  }
+  function drawSearch(){
+    const box=$('searchResults');box.replaceChildren();
+    const query=$('taxonSearch').value;
+    state.searchHits=matchTaxa(query);
+    state.searchIndex=0;
+    if(!query.trim()){box.hidden=true;return;}
+    if(!state.searchHits.length){const empty=document.createElement('div');empty.className='search-empty';empty.textContent='没有找到匹配类群';box.append(empty);}
+    state.searchHits.forEach((n,i)=>{
+      const button=document.createElement('button');button.className='search-result';button.setAttribute('role','option');
+      button.setAttribute('aria-selected',String(i===state.searchIndex));button.dataset.index=i;
+      const name=document.createElement('strong');name.textContent=n.zh;
+      const latin=document.createElement('small');latin.textContent=n.latin+' · '+n.rank;
+      button.append(name,latin);
+      button.addEventListener('click',()=>openSearchResult(i));
+      box.append(button);
+    });box.hidden=false;
+  }
+  function openSearchResult(index){
+    const n=state.searchHits[index];if(!n)return;
+    $('taxonSearch').value=n.zh;$('searchResults').hidden=true;
+    closeSidebar();selectNode(n.id);
+  }
+  function searchKeydown(e){
+    if(e.key==='Escape'){$('searchResults').hidden=true;return;}
+    if(!state.searchHits.length)return;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();state.searchIndex=(state.searchIndex+(e.key==='ArrowDown'?1:-1)+state.searchHits.length)%state.searchHits.length;
+      $('searchResults').querySelectorAll('[role="option"]').forEach((el,i)=>el.setAttribute('aria-selected',String(i===state.searchIndex)));
+    }else if(e.key==='Enter'){e.preventDefault();openSearchResult(state.searchIndex);}
+  }
+  function lca(a,b){
+    const seen=new Set(path(a).map(n=>n.id));
+    return path(b).find(n=>seen.has(n.id))||byId.get('luca');
+  }
+  function compare(){
+    const a=byId.get($('speciesA').value),b=byId.get($('speciesB').value);
+    if(!a||!b)return;
+    const common=lca(a.id,b.id);
+    const branch=id=>path(id).reverse().slice(path(common.id).length);
+    const column=(n,sequence)=>{
+      const items=sequence.length?sequence:[n];
+      return '<div class="path-column"><div class="species-card"><h3>'+esc(n.zh)+'</h3><em>'+esc(n.latin)+'</em></div><div class="path-list">'+
+        items.map(t=>'<div class="path-item"><strong>'+esc(t.zh)+'</strong><small>'+esc(t.rank)+' · '+esc(nodeAge(t))+'</small></div>').join('')+'</div></div>';
+    };
+    $('compareResult').innerHTML='<div class="lca-banner"><small>当前示意树中的最近共同祖先</small><h2>'+esc(common.zh)+'</h2><em>'+esc(common.latin)+'</em><div class="compare-meta"><span>'+esc(common.rank)+'</span><span>'+esc(nodeAge(common))+'</span><span>'+esc(a.id===b.id?'同一物种':'分化后形成的两条分支')+'</span></div></div><div class="path-columns">'+column(a,branch(a.id))+column(b,branch(b.id))+'</div>';
+  }
+  function switchView(view,update=true){
+    if(!['tree','compare','sources'].includes(view))return;
+    state.view=view;
+    document.querySelectorAll('.view-panel').forEach(el=>el.classList.toggle('active',el.dataset.panel===view));
+    document.querySelectorAll('.nav-item').forEach(el=>{const active=el.dataset.view===view;el.classList.toggle('active',active);el.setAttribute('aria-current',active?'page':'false');});
+    $('headerContext').textContent={tree:'生命之树',compare:'共同祖先比较',sources:'资料与方法'}[view];
+    $('mainArea').scrollTop=0;hideTip();closeSidebar();closeInspector();
+    if(view==='tree')requestAnimationFrame(fit);
+    if(view==='compare')compare();
+    if(update)syncUrl();
+  }
+  function populateSources(){
+    const container=$('sourceGrid');
+    container.replaceChildren(...research.sources.map(s=>{
+      const card=document.createElement('article');card.className='source-card';
+      const header=document.createElement('header'),title=document.createElement('h3'),tag=document.createElement('span');
+      title.textContent=s.name;tag.className='category';tag.textContent=s.category;header.append(title,tag);
+      const description=document.createElement('p');description.textContent=s.description;
+      const link=document.createElement('a');link.href=s.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='打开数据源 ↗';
+      card.append(header,description,link);return card;
+    }));
+    $('researchGrid').replaceChildren(...research.topics.map(t=>{
+      const card=document.createElement('article');card.className='research-card';
+      const type=document.createElement('div');type.className='research-type';type.textContent=t.category;
+      const title=document.createElement('h3');title.textContent=t.title;
+      const description=document.createElement('p');description.textContent=t.summary;
+      const link=document.createElement('a');link.href=t.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent='阅读资料 ↗';
+      card.append(type,title,description,link);return card;
+    }));
+  }
+  function loadTheme(){
+    let saved='system';try{saved=localStorage.getItem('evoatlas-theme')||'system';}catch{}
+    state.theme=['light','dark','system'].includes(saved)?saved:'system';
+    applyTheme();
+  }
+  function applyTheme(){
+    const dark=state.theme==='dark'||(state.theme==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme=dark?'dark':'light';
+    const themeLabel={system:'跟随系统',light:'浅色模式',dark:'深色模式'}[state.theme];
+    $('themeToggle').title='当前：'+themeLabel+'；点击切换';
+    $('themeToggle').setAttribute('aria-label','当前：'+themeLabel+'；点击切换');
+    $('themeToggle').querySelector('use').setAttribute('href',dark?'#i-sun':'#i-moon');
+  }
+  function closeSidebar(){$('sidebar').classList.remove('open');$('mobileScrim').hidden=true;}
   function bind(){
-    document.querySelectorAll('.nav-btn').forEach(b=>b.onclick=()=>switchView(b.dataset.view));document.querySelector('.source-link').onclick=e=>{e.preventDefault();switchView('sources')};
-    $('cladeSelect').onchange=e=>{S.root=e.target.value;S.selected=null;render(true)};$('scaleSelect').onchange=e=>{S.scale=e.target.value;render(true)};$('detailSelect').onchange=e=>{S.detail=e.target.value;render(true)};$('extinctToggle').onchange=e=>{S.extinct=e.target.checked;render(true)};$('eventToggle').onchange=e=>{S.events=e.target.checked;render()};
-    $('resetTree').onclick=()=>{Object.assign(S,{root:'luca',scale:'log',detail:'full',extinct:true,events:true,selected:null});$('cladeSelect').value='luca';$('scaleSelect').value='log';$('detailSelect').value='full';$('extinctToggle').checked=true;$('eventToggle').checked=true;$('emptyDetail').hidden=false;$('taxonDetail').hidden=true;render(true)};
-    $('taxonSearch').oninput=e=>search(e.target.value);document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement?.tagName!=='INPUT'){e.preventDefault();$('taxonSearch').focus()}});document.addEventListener('click',e=>{if(!e.target.closest('.search-box,.search-results'))$('searchResults').hidden=true});
-    $('zoomIn').onclick=()=>zoom(1.25);$('zoomOut').onclick=()=>zoom(.8);$('fitTree').onclick=fit;$('graphStage').addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1.12:.89,e.clientX,e.clientY)},{passive:false});
-    $('graphStage').onpointerdown=e=>{if(e.target.closest('.node'))return;S.drag={x:e.clientX,y:e.clientY,tx:S.tx,ty:S.ty};$('graphStage').classList.add('dragging');$('graphStage').setPointerCapture(e.pointerId)};$('graphStage').onpointermove=e=>{if(!S.drag)return;S.tx=S.drag.tx+e.clientX-S.drag.x;S.ty=S.drag.ty+e.clientY-S.drag.y;apply()};const stop=()=>{S.drag=null;$('graphStage').classList.remove('dragging')};$('graphStage').onpointerup=stop;$('graphStage').onpointercancel=stop;
-    $('exploreHuman').onclick=()=>{switchView('tree');S.root='hominina';$('cladeSelect').value='hominina';render(true);setTimeout(()=>select('sapiens'),250)};$('randomSpecies').onclick=()=>{const s=taxa.filter(x=>x.rank==='种');switchView('tree');select(s[Math.floor(Math.random()*s.length)].id)};
-    $('runCompare').onclick=compare;$('speciesA').onchange=compare;$('speciesB').onchange=compare;$('swapSpecies').onclick=()=>{const a=$('speciesA').value;$('speciesA').value=$('speciesB').value;$('speciesB').value=a;compare()};$('themeToggle').onclick=()=>{document.body.classList.toggle('light');localStorage.setItem('evoatlas-theme',document.body.classList.contains('light')?'light':'dark')};window.addEventListener('resize',()=>document.querySelector('[data-panel="tree"]').classList.contains('active')&&fit());
+    document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>switchView(button.dataset.view)));
+    document.querySelectorAll('[data-root]').forEach(button=>button.addEventListener('click',()=>focusRoot(button.dataset.root)));
+    $('resetTree').addEventListener('click',reset);
+    $('taxonSearch').addEventListener('input',drawSearch);
+    $('taxonSearch').addEventListener('keydown',searchKeydown);
+    document.addEventListener('keydown',e=>{
+      const tag=document.activeElement?.tagName;
+      if(e.key==='/'&&tag!=='INPUT'&&tag!=='TEXTAREA'&&tag!=='SELECT'){
+        e.preventDefault();$('taxonSearch').focus();
+        if(window.matchMedia('(max-width: 780px)').matches){$('sidebar').classList.add('open');$('mobileScrim').hidden=false;}
+      }
+      if(e.key==='Escape'){hideTip();$('searchResults').hidden=true;closeSidebar();closeInspector();}
+    });
+    document.addEventListener('click',e=>{if(!e.target.closest('.side-section'))$('searchResults').hidden=true;});
+    $('openSidebar').addEventListener('click',()=>{$('sidebar').classList.add('open');$('mobileScrim').hidden=false;});
+    $('mobileScrim').addEventListener('click',closeSidebar);
+    $('closeInspector').addEventListener('click',closeInspector);
+    $('suggestNode').addEventListener('click',()=>selectNode('sapiens'));
+    $('exploreHuman').addEventListener('click',()=>{focusRoot('hominina');selectNode('sapiens');});
+    $('randomSpecies').addEventListener('click',()=>{
+      const species=taxa.filter(n=>n.rank==='种');
+      const random=species[Math.floor(Math.random()*species.length)];
+      if(random)selectNode(random.id);
+    });
+    $('scaleSelect').addEventListener('change',e=>{state.scale=e.target.value;render(true);});
+    $('detailSelect').addEventListener('change',e=>{state.detail=e.target.value;render(true);});
+    $('extinctToggle').addEventListener('change',e=>{
+      state.extinct=e.target.checked;
+      if(!state.extinct&&byId.get(state.selected)?.status==='extinct'){clearSelection();}
+      render(true);
+    });
+    $('eventToggle').addEventListener('change',e=>{state.events=e.target.checked;render();});
+    $('zoomIn').addEventListener('click',()=>zoomAt(1.2));
+    $('zoomOut').addEventListener('click',()=>zoomAt(1/1.2));
+    $('fitTree').addEventListener('click',fit);
+    const stage=$('graphStage');
+    stage.addEventListener('wheel',e=>{e.preventDefault();zoomAt(e.deltaY<0?1.12:1/1.12,e.clientX,e.clientY);},{passive:false});
+    stage.addEventListener('pointerdown',e=>{
+      if(e.button!==0||e.target.closest('.node'))return;
+      state.drag={pointer:e.pointerId,x:e.clientX,y:e.clientY,tx:state.tx,ty:state.ty};
+      stage.classList.add('dragging');stage.setPointerCapture(e.pointerId);
+    });
+    stage.addEventListener('pointermove',e=>{
+      if(!state.drag||state.drag.pointer!==e.pointerId)return;
+      state.tx=state.drag.tx+e.clientX-state.drag.x;state.ty=state.drag.ty+e.clientY-state.drag.y;applyTransform();
+    });
+    const endDrag=e=>{if(!state.drag||state.drag.pointer!==e.pointerId)return;state.drag=null;stage.classList.remove('dragging');if(stage.hasPointerCapture(e.pointerId))stage.releasePointerCapture(e.pointerId);};
+    stage.addEventListener('pointerup',endDrag);stage.addEventListener('pointercancel',endDrag);
+    $('speciesA').addEventListener('change',compare);
+    $('speciesB').addEventListener('change',compare);
+    $('runCompare').addEventListener('click',compare);
+    $('swapSpecies').addEventListener('click',()=>{
+      const a=$('speciesA').value;
+      $('speciesA').value=$('speciesB').value;$('speciesB').value=a;compare();
+    });
+    $('themeToggle').addEventListener('click',()=>{
+      state.theme=state.theme==='system'?'light':state.theme==='light'?'dark':'system';
+      try{localStorage.setItem('evoatlas-theme',state.theme);}catch{}
+      applyTheme();
+    });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change',()=>{if(state.theme==='system')applyTheme();});
+    if('ResizeObserver' in window)new ResizeObserver(()=>{if(state.view==='tree')fit();}).observe(stage);
+    else window.addEventListener('resize',fit);
+    window.addEventListener('hashchange',readHash);
   }
-  function zoom(f,cx,cy){const r=$('graphStage').getBoundingClientRect(),px=(cx??r.left+r.width/2)-r.left,py=(cy??r.top+r.height/2)-r.top,old=S.zoom,nw=Math.max(.12,Math.min(4,old*f)),gx=(px-S.tx)/old,gy=(py-S.ty)/old;S.zoom=nw;S.tx=px-gx*nw;S.ty=py-gy*nw;apply();}
-  function init(){if(!taxa.length)return; if(localStorage.getItem('evoatlas-theme')==='light')document.body.classList.add('light');$('statNodes').textContent=taxa.length.toLocaleString('zh-CN');$('statSpecies').textContent=taxa.filter(x=>x.rank==='种').length;$('statFossils').textContent=taxa.filter(x=>x.status==='extinct').length;const species=taxa.filter(x=>x.rank==='种').sort((a,b)=>a.zh.localeCompare(b.zh,'zh-CN'));for(const id of ['speciesA','speciesB'])$(id).replaceChildren(...species.map(x=>Object.assign(document.createElement('option'),{value:x.id,textContent:`${x.emoji||''} ${x.zh} — ${x.latin}`})));$('speciesA').value='sapiens';$('speciesB').value='pan';sources();bind();render(true);compare();}
+  function readHash(){
+    const hash=location.hash.slice(1),[view,query='']=hash.split('?');
+    if(['compare','sources'].includes(view)){switchView(view,false);return;}
+    const params=new URLSearchParams(query);
+    const root=params.get('root');
+    const selected=params.get('node');
+    if(root&&byId.has(root))state.root=root;
+    if(selected&&byId.has(selected)){
+      state.selected=selected;
+      if(!inside(selected,state.root))state.root='luca';
+    }
+    switchView('tree',false);render(true);
+    if(state.selected)showDetail(byId.get(state.selected));
+  }
+  function init(){
+    if(!taxa.length){$('graphEmpty').hidden=false;$('graphEmpty').textContent='尚未加载图谱数据';return;}
+    loadTheme();populateSources();
+    const species=taxa.filter(n=>n.rank==='种').sort((a,b)=>a.zh.localeCompare(b.zh,'zh-CN'));
+    for(const id of ['speciesA','speciesB']){
+      const select=$(id);select.replaceChildren(...species.map(n=>{const option=document.createElement('option');option.value=n.id;option.textContent=n.zh+' — '+n.latin;return option;}));
+    }
+    if(byId.has('sapiens'))$('speciesA').value='sapiens';
+    if(byId.has('pan'))$('speciesB').value='pan';
+    bind();readHash();compare();
+  }
   init();
 })();
