@@ -131,7 +131,24 @@
   }
   function layoutV2(){
     const stage=$('graphStage'),stageWidth=stage.clientWidth||900;
-    state.layoutMarginX=68;state.layoutRightInset=310;state.layoutDepthStep=165;
+    state.layoutMarginX=68;state.layoutRightInset=310;
+    // A focused star-like clade often has only one or two levels. Its tips
+    // should use the canvas width instead of clustering next to the trunk.
+    const allowed=new Set(state.layoutSource.records.map(n=>n.id));
+    const folded=new Set(state.layoutSource.collapsedIds);
+    let visibleDepth=0;
+    const stack=[[state.root,0]];
+    while(stack.length){
+      const [id,depth]=stack.pop();
+      visibleDepth=Math.max(visibleDepth,depth);
+      if(folded.has(id))continue;
+      for(const child of children.get(id)||[]){
+        if(allowed.has(child))stack.push([child,depth+1]);
+      }
+    }
+    state.layoutDepthStep=state.layoutMode==='structure'
+      ?visibleDepth<=1?420:visibleDepth===2?240:165
+      :165;
     state.layoutPlotWidth=state.layoutMode==='structure'
       ?Math.max(1040,stageWidth*1.2)
       :state.scale==='linear'?Math.max(960,stageWidth*1.18)
