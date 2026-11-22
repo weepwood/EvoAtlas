@@ -18,7 +18,12 @@ async function main(){
     page.on('pageerror',error=>issues.push(error.message));
     await page.goto('http://127.0.0.1:8000/',{waitUntil:'load'});
     await page.waitForSelector('#nodeLayer .node');
+    assert.equal(await page.evaluate(()=>window.EVO_TAXA.length),608);
+    assert.equal(await page.locator('#speciesA option').count(),496);
     assert.equal(await page.locator('.workspace-heading').count(),0);
+    const chevron=page.locator('[data-select="scaleSelect"] .custom-select-chevron');
+    assert.equal(await chevron.evaluate(el=>el.namespaceURI),'http://www.w3.org/2000/svg');
+    assert.equal(await chevron.locator('path').getAttribute('d'),'m6 9 6 6 6-6');
     assert.ok(await page.locator('#graphStage').evaluate(el=>el.getBoundingClientRect().height)>450,'canvas should be immersive');
 
     await page.locator('[data-root="eukaryota"]').click();
@@ -29,6 +34,7 @@ async function main(){
     const timeTrigger=page.locator('[data-select="scaleSelect"] .custom-select-trigger');
     await timeTrigger.click();
     assert.equal(await timeTrigger.getAttribute('aria-expanded'),'true');
+    await page.screenshot({path:'artifacts/evoatlas-select-icons.png'});
     await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'线性'}).click();
     assert.equal(await page.locator('#scaleSelect').inputValue(),'linear');
     assert.equal(await page.locator('#graphStage').getAttribute('data-scale'),'linear');
@@ -47,8 +53,13 @@ async function main(){
     const compareTrigger=page.locator('[data-select="speciesA"] .custom-select-trigger');
     await compareTrigger.click();
     assert.ok(await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').count()>20);
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('Enter');
+    assert.ok(await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').count()<=80);
+    const filter=page.locator('.custom-select-menu:not([hidden]) .custom-select-search');
+    await filter.fill('Homo sapiens');
+    assert.equal(await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').count(),1);
+    await page.screenshot({path:'artifacts/evoatlas-species-search.png'});
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').click();
+    assert.equal(await page.locator('#speciesA').inputValue(),'sapiens');
     assert.ok(await page.locator('#compareResult .lca-banner').count()>0);
 
     await page.locator('[data-view="sources"]').click();
@@ -57,6 +68,21 @@ async function main(){
     await page.screenshot({path:'artifacts/evoatlas-sources-desktop.png',fullPage:true});
 
     await page.locator('[data-view="tree"]').click();
+    await page.locator('#taxonSearch').fill('Panthera tigris');
+    await page.locator('#searchResults .search-result').first().click();
+    assert.match(await page.locator('#detailLatin').innerText(),/Panthera tigris/);
+    assert.match(await page.locator('#detailRank').innerText(),/待核验/);
+    await page.locator('[data-root="mammalia"]').click();
+    const overviewCount=await page.locator('#nodeLayer .node').count();
+    assert.ok(overviewCount>15 && overviewCount<=70,'overview needs capped LOD');
+    const desktopTransform=await page.locator('#viewport').getAttribute('transform');
+    const desktopScale=Number(desktopTransform.match(/scale\(([-\d.]+)\)/)?.[1]||0);
+    assert.ok(desktopScale>=0.74,'dense desktop overview should not render text as a thumbnail');
+    await page.locator('[data-select="detailSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'全部节点'}).click();
+    assert.ok(await page.locator('#nodeLayer .node').count()>120,'full mammal branch should contain many taxa');
+    await page.locator('[data-select="detailSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'概览'}).click();
     await page.mouse.move(780,650);
     await page.waitForTimeout(300);
     assert.ok(await page.locator('[data-view="tree"]').evaluate(el=>el.classList.contains('active')));

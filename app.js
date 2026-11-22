@@ -54,28 +54,45 @@
   }
   function build() {
     const candidates=descendants(state.root).filter(n=>state.extinct || n.status!=='extinct');
-    const include = new Set([state.root]);
-    candidates.forEach(n=>{
-      if(state.detail==='full'){include.add(n.id);return;}
-      const relativeDepth=path(n.id).findIndex(x=>x.id===state.root);
-      // A world overview should remain readable, not cram every named tip
-      // into a single viewport. Featured tips appear after focusing a clade.
-      if(relativeDepth>=0 && (relativeDepth<=3 || (state.root!=='luca' && relativeDepth<=5 && featured.has(n.id)) || n.id===state.selected)) include.add(n.id);
-    });
-    // Preserve every ancestor of a displayed featured taxon. Otherwise the
-    // overview would imply false direct parent-child evolutionary links.
-    [...include].forEach(id=>{
-      path(id).forEach(n=>{if(inside(n.id,state.root))include.add(n.id);});
-    });
-    if(state.selected && inside(state.selected,state.root)){
-      path(state.selected).forEach(n=>{if(inside(n.id,state.root))include.add(n.id);});
+    const candidateIds=new Set(candidates.map(n=>n.id));
+    const include=new Set([state.root]);
+    if(state.detail==='full'){
+      candidates.forEach(n=>include.add(n.id));
+    }else{
+      // Level-of-detail: 600+ taxa must not flatten into unreadable hairlines.
+      // Traverse evenly across sibling branches, showing broad diversity
+      // instead of exhausting one large family before the others.
+      const budget=window.innerWidth<700?34:58;
+      let layer=[state.root];
+      while(layer.length && include.size<budget){
+        const groups=layer.map(id=>(children.get(id)||[])
+          .filter(childId=>candidateIds.has(childId)));
+        const next=[];
+        const longest=Math.max(0,...groups.map(group=>group.length));
+        for(let column=0;column<longest && include.size<budget;column++){
+          for(const group of groups){
+            const id=group[column];
+            if(!id || include.size>=budget)continue;
+            include.add(id);next.push(id);
+          }
+        }
+        layer=next;
+      }
+      // Preserve the exact ancestor chain of a searched/selected taxon.
+      if(state.selected && candidateIds.has(state.selected)){
+        for(const ancestor of path(state.selected)){
+          if(candidateIds.has(ancestor.id))include.add(ancestor.id);
+          if(ancestor.id===state.root)break;
+        }
+      }
     }
+    state.totalAvailable=candidates.length;
     state.visible=[];state.parents=new Map();
     candidates.forEach(n=>{
       if(!include.has(n.id))return;
-      let p=n.parent;
-      while(p && !include.has(p))p=byId.get(p)?.parent;
-      state.parents.set(n.id,n.id===state.root?null:p||null);
+      let parent=n.parent;
+      while(parent && !include.has(parent))parent=byId.get(parent)?.parent;
+      state.parents.set(n.id,n.id===state.root?null:parent||null);
       state.visible.push(n);
     });
   }
@@ -267,14 +284,16 @@
     const box=$('graphStage').getBoundingClientRect();
     if(box.width<10||box.height<10)return;
     const natural=Math.max(.12,Math.min(1.5,Math.min((box.width-44)/state.width,(box.height-40)/state.height)));
-    const isNarrow=box.width<600;
-    if(isNarrow && !showEntireTree){
-      // Tiny all-at-once mobile renders are unreadable. Begin with an
-      // anchored, legible portion and let the user pan or press Fit for all.
-      state.zoom=Math.max(.8,Math.min(1.3,(box.height-34)/state.height));
-      const focus=state.pos.get(state.selected||state.root);
-      state.tx=(state.selected?box.width*.52:34)-(focus?.x||65)*state.zoom;
-      state.ty=(box.height-state.height*state.zoom)/2;
+    const minLegible=box.width<600?.8:.75;
+    if(!showEntireTree && natural<minLegible){
+      // Dense branches are unreadable when every label is scaled into a
+      // thumbnail. Open at a usable local zoom, and keep the Fit button as
+      // the explicit way to view the entire (possibly very large) subtree.
+      state.zoom=minLegible;
+      const point=state.pos.get(state.selected||state.root);
+      const anchorX=box.width*(box.width<600?.20:.24);
+      state.tx=anchorX-(point?.x||65)*state.zoom;
+      state.ty=box.height*.47-(point?.y||state.height/2)*state.zoom;
     }else{
       state.zoom=natural;
       state.tx=(box.width-state.width*natural)/2;
@@ -328,6 +347,10 @@
     build();layout();drawGrid();drawEvents();drawTree();
     $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
+    const hint=$('graphStage').querySelector('.graph-overlay-hint');
+    if(hint)hint.textContent=state.detail==='overview'&&state.visible.length<state.totalAvailable
+      ? '概览 '+state.visible.length+'/'+state.totalAvailable+' · 聚焦支系或搜索更多物种'
+      : '滚轮缩放 · 拖拽移动 · 点击类群查看';
     updateClades();updateHeaderBreadcrumb();
     if(fitNow)requestAnimationFrame(()=>fit());else applyTransform();
   }
@@ -375,13 +398,20 @@
   function showDetail(n){
     $('emptyDetail').hidden=true;$('taxonDetail').hidden=false;
     const kind=n.status==='extinct'?'化石 / 灭绝类群':n.status==='extant'?'现生物种':'支系或示意分叉';
-    $('detailRank').textContent=n.rank+'  ·  '+kind;
+    $('detailRank').textContent=n.rank+'  ·  '+kind+(n.evidenceState==='pending-review'?' · 名称待核验':'');
     $('detailName').textContent=n.zh;
     $('detailLatin').textContent=n.latin;
     $('detailSummary').textContent=n.summary;
     $('detailAge').textContent=nodeAge(n);
     $('detailStatus').textContent=n.status==='extinct'?'灭绝':n.status==='extant'?'现生':'内部支系';
-    $('traitList').replaceChildren(...(n.traits||[]).map(s=>{const el=document.createElement('span');el.textContent=s;return el;}));
+    const recordedTraits=n.traits||[];
+    $('traitList').replaceChildren(...recordedTraits.map(trait=>{const el=document.createElement('span');el.textContent=trait;return el;}));
+    if(!recordedTraits.length){
+      const note=document.createElement('span');
+      note.className='unverified-trait-note';
+      note.textContent='尚无逐种核验的性状记录';
+      $('traitList').append(note);
+    }
     const lineage=$('lineage');lineage.replaceChildren();
     path(n.id).reverse().forEach((member,i)=>{
       if(i){const sep=document.createElement('i');sep.textContent='›';lineage.append(sep);}

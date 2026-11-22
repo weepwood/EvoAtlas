@@ -25,6 +25,7 @@ jobs:
           node --check ui/custom-select.js
           node --check data/data.js
           node --check data/curation.js
+          node --check data/species.js
           node --check data/research.js
       - name: Curated data structure
         run: python3 scripts/validate_data.py
