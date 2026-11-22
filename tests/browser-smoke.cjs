@@ -81,6 +81,7 @@ async function main(){
     assert.match(await page.locator('#detailLatin').innerText(),/Panthera tigris/);
     assert.match(await page.locator('#detailRank').innerText(),/待核验/);
     await page.locator('[data-root="mammalia"]').click();
+    await page.locator('#nodeLayer .node[data-id="mammalia"]').dispatchEvent('click');
     const overviewCount=await page.locator('#nodeLayer .node').count();
     assert.ok(overviewCount>15 && overviewCount<=70,'overview needs capped LOD');
     assert.ok(await page.locator('#graphMinimap').isVisible(),'overview must have a navigation minimap');
@@ -171,6 +172,19 @@ async function main(){
     const zoomMatch=transform.match(/scale\(([-\d.]+)\)/);
     assert.ok(zoomMatch&&Number(zoomMatch[1])>=0.75,'mobile default zoom must preserve label readability');
     await page.screenshot({path:'artifacts/evoatlas-tree-mobile.png'});
+
+    // A URL query flag must offer a usable rollback path to the old renderer.
+    const legacy=await browser.newPage({viewport:{width:1180,height:760}});
+    const legacyErrors=[];
+    legacy.on('pageerror',err=>legacyErrors.push(err.message));
+    await legacy.goto('http://127.0.0.1:8000/?layout=legacy',{waitUntil:'load'});
+    await legacy.waitForSelector('#nodeLayer .node');
+    assert.equal(await legacy.locator('#graphStage').getAttribute('data-engine'),'legacy');
+    assert.equal(await legacy.locator('#layoutModeSelect').isDisabled(),true);
+    await legacy.locator('[data-root="mammalia"]').click();
+    assert.ok(await legacy.locator('#edgeLayer path').count()>10);
+    assert.deepEqual(legacyErrors,[]);
+    await legacy.close();
 
     assert.deepEqual(issues,[],'page should have no uncaught JavaScript errors');
     console.log('PASS: desktop and mobile interactions, data directory, timeline and custom selects.');
