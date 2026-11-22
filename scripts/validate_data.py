@@ -9,7 +9,7 @@ import sys
 from collections import Counter
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-DATA = [ROOT / "data" / "data.js", ROOT / "data" / "curation.js"]
+DATA = [ROOT / "data" / "data.js", ROOT / "data" / "curation.js", ROOT / "data" / "species.js"]
 VALID_STATUS = {"extant", "extinct", "ancestral"}
 VALID_CONFIDENCE = {"high", "medium", "low"}
 REQUIRED = {
@@ -37,8 +37,8 @@ def validate(nodes: list[dict]) -> list[str]:
     if duplicates:
         errors.append(f"duplicate ids: {duplicates}")
 
-    if len(nodes) < 80:
-        errors.append(f"expected at least 80 curated nodes, got {len(nodes)}")
+    if len(nodes) < 580:
+        errors.append(f"expected at least 580 curated nodes, got {len(nodes)}")
     if not any(n["id"] == "luca" and n.get("parent") is None for n in nodes):
         errors.append("missing LUCA root")
     if any(str(n["id"]).startswith("survey-") for n in nodes):
@@ -63,6 +63,20 @@ def validate(nodes: list[dict]) -> list[str]:
         if n["status"] == "extinct" and "firstMa" in n and "lastMa" in n:
             if not (0 <= n["lastMa"] <= n["firstMa"] <= 4600):
                 errors.append(f"{node_id}: invalid fossil range")
+
+    scientific_names = [n["latin"].casefold() for n in nodes if n["rank"] == "种"]
+    duplicate_names = [name for name, count in Counter(scientific_names).items() if count > 1]
+    if duplicate_names:
+        errors.append(f"duplicate species scientific names: {duplicate_names}")
+
+    additions = [n for n in nodes if n["id"].startswith("catalog-")]
+    if len(additions) < 400:
+        errors.append(f"expected 400+ added species, found {len(additions)}")
+    for n in additions:
+        if n["rank"] != "种" or n["status"] != "extant" or n["ageMa"] != 0:
+            errors.append(f"{n['id']}: invalid new species status/time")
+        if n.get("evidenceState") != "pending-review":
+            errors.append(f"{n['id']}: missing review-state disclosure")
 
     for n in nodes:
         seen: set[str] = set()
@@ -91,6 +105,7 @@ def main() -> int:
     errors = validate(nodes)
     print(f"Curated nodes: {len(nodes)}")
     print(f"Species: {sum(n['rank'] == '种' for n in nodes)}")
+    print(f"Species awaiting source review: {sum(n['id'].startswith('catalog-') for n in nodes)}")
     print(f"Extinct representative taxa: {sum(n['status'] == 'extinct' for n in nodes)}")
     print(f"Placeholder nodes: {sum(n['id'].startswith('survey-') for n in nodes)}")
     if errors:
