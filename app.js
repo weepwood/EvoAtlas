@@ -58,7 +58,9 @@
     candidates.forEach(n=>{
       if(state.detail==='full'){include.add(n.id);return;}
       const relativeDepth=path(n.id).findIndex(x=>x.id===state.root);
-      if(relativeDepth>=0 && (relativeDepth<=3 || featured.has(n.id) || n.id===state.selected)) include.add(n.id);
+      // A world overview should remain readable, not cram every named tip
+      // into a single viewport. Featured tips appear after focusing a clade.
+      if(relativeDepth>=0 && (relativeDepth<=3 || (state.root!=='luca' && relativeDepth<=5 && featured.has(n.id)) || n.id===state.selected)) include.add(n.id);
     });
     // Preserve every ancestor of a displayed featured taxon. Otherwise the
     // overview would imply false direct parent-child evolutionary links.
@@ -94,7 +96,10 @@
     };
     if(branches.has(state.root))setY(state.root);
     state.height=Math.max(490,top+Math.max(1,leaves-1)*gap+90);
-    state.width=state.detail==='full'?1640:1400;
+    // Adapt the virtual canvas to the real reading area before fitting;
+    // a fixed 1400px overview produced illegibly small text on laptops.
+    const stageWidth=$('graphStage').clientWidth||900;
+    state.width=state.detail==='full'?Math.max(1150,stageWidth*1.25):Math.max(940,stageWidth*1.1);
     state.maxMa=Math.max(...state.visible.map(timeOf),timeOf(byId.get(state.root))||1,1);
     state.pos=new Map(state.visible.map(n=>[n.id,{x:xFor(timeOf(n)),y:yy.get(n.id)||top}]));
   }
