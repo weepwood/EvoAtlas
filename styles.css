@@ -193,10 +193,10 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
 .custom-select.is-open .custom-select-trigger{border-color:var(--primary);background:var(--surface)}
 .custom-select-trigger:disabled{opacity:.45;cursor:not-allowed}
 .custom-select-value{min-width:0;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.custom-select-chevron{font-size:15px;line-height:1;color:var(--muted);transform:translateY(-2px);transition:transform .14s}
-.custom-select.is-open .custom-select-chevron{transform:translateY(1px) rotate(180deg)}
+.custom-select-chevron{flex:0 0 16px;width:16px;height:16px;display:block;align-self:center;color:var(--muted);transform:rotate(0);transform-origin:center;transition:transform .16s ease}
+.custom-select.is-open .custom-select-chevron{transform:rotate(180deg)}
 .custom-select-menu{position:fixed;z-index:300;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding:5px;max-height:300px;border-radius:9px;border:1px solid var(--line-strong);background:var(--surface);box-shadow:0 14px 34px rgba(25,33,27,.17);scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
-.custom-select-option{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;width:100%;min-height:34px;padding:8px 10px;background:transparent;border:0;border-radius:6px;color:var(--text);font-size:12px;line-height:1.45}
+.custom-select-option{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;width:100%;min-height:36px;padding:8px 10px;background:transparent;border:0;border-radius:6px;color:var(--text);font-size:12px;line-height:1.45}
 .custom-select-option:hover,.custom-select-option.is-active{background:var(--surface-alt)}
 .custom-select-option.is-selected{color:var(--primary);font-weight:650}
 .custom-select-option.is-active.is-selected{background:var(--primary-soft)}
@@ -239,3 +239,21 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
   .viewer-footer{padding:7px 9px}
 }
 @media(prefers-reduced-motion:reduce){.custom-select-trigger,.custom-select-chevron{transition:none}}
+
+
+/* Stable SVG icons and scalable, searchable species selectors. */
+.custom-select-option-text{min-width:0;flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:3px}
+.custom-select-option-check{width:15px;height:15px;flex:0 0 15px;color:var(--primary);opacity:0}
+.custom-select-option.is-selected .custom-select-option-check{opacity:1}
+.custom-select-search-field{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;margin:0 0 4px;padding:7px 10px;background:var(--surface);border-bottom:1px solid var(--line)}
+.custom-select-search-field[hidden]{display:none!important}
+.custom-select-search-icon{width:15px;height:15px;flex:0 0 15px;color:var(--muted)}
+.custom-select-search{width:100%;min-width:0;padding:4px 0;background:transparent;border:0;outline:none;color:var(--text);font-size:12px}
+.custom-select-search::placeholder{color:var(--subtle)}
+.custom-select-search:focus-visible{outline:none}
+.custom-select-menu{display:flex;flex-direction:column;overflow:hidden;padding:5px}
+.custom-select-list{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent;min-height:0;max-height:280px}
+.custom-select-empty{padding:12px;margin:0;color:var(--muted);font-size:12px}
+@media(max-width:480px){
+  .custom-select-menu{max-width:calc(100vw - 16px)}
+}
