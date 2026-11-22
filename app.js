@@ -703,8 +703,9 @@
     if(state.engine==='v2'){
       // Reveal the selected true lineage, even when ancestors were auto-folded.
       for(const ancestor of path(id)){
+        // Selection pins its ancestor path temporarily; do not persist every
+        // ancestor as an explicit expansion after the selection changes.
         state.foldedIds.delete(ancestor.id);
-        state.expandedIds.add(ancestor.id);
         if(ancestor.id===state.root)break;
       }
     }
