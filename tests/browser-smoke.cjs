@@ -99,7 +99,8 @@ async function main(){
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),1,
       'local expansion must show true taxon children without changing root');
     assert.ok(await page.locator('#nodeLayer .node').count()>beforeExpansion);
-    assert.equal(await page.locator('#headerBreadcrumb [aria-current="location"]').innerText(),'哺乳动物');
+    assert.equal(await page.locator('#headerBreadcrumb [aria-current="location"]').innerText(),
+      await page.evaluate(()=>window.EVO_TAXA.find(t=>t.id==='mammalia').zh));
     await page.locator('#nodeLayer .node[data-id="felidae"] .node-more').dispatchEvent('click');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
       'collapsing must hide only the family descendants');
