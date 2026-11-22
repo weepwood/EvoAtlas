@@ -153,23 +153,26 @@
   function ageOf(record){
     if(record.status==='extinct' && Number.isFinite(record.lastMa))
       return record.lastMa;
-    return Number.isFinite(record.ageMa)?record.ageMa:0;
+    if(!Number.isFinite(record.ageMa) || record.ageMa<0)
+      throw new Error('Missing or invalid time coordinate: '+record.id);
+    return record.ageMa;
   }
 
   function placeHorizontal(nodes,recordsById,config){
+    if(config.mode==='structure'){
+      // The structure view must NOT require fossil dates or imply a clock.
+      for(const n of nodes)n.x=config.marginX+n.depth*config.depthStep;
+      return {maxAge:null,axisKind:null};
+    }
     const maxAge=Math.max(1,...nodes.map(n=>ageOf(recordsById.get(n.id))));
     const usable=config.plotWidth-config.marginX-config.rightInset;
     for(const n of nodes){
-      if(config.mode==='structure'){
-        n.x=config.marginX+n.depth*config.depthStep;
-      }else{
-        const ma=ageOf(recordsById.get(n.id));
-        const fraction=config.timeScale==='linear'
-          ?1-ma/maxAge:1-Math.log10(ma+1)/Math.log10(maxAge+1);
-        n.x=config.marginX+usable*fraction;
-      }
+      const ma=ageOf(recordsById.get(n.id));
+      const fraction=config.timeScale==='linear'
+        ?1-ma/maxAge:1-Math.log10(ma+1)/Math.log10(maxAge+1);
+      n.x=config.marginX+usable*fraction;
     }
-    return {maxAge,axisKind:config.mode==='time'?'teaching-time':null};
+    return {maxAge,axisKind:'teaching-time'};
   }
 
   function buildSegments(nodes){
@@ -198,6 +201,7 @@
   }
 
   function layoutTree(records,opts={}){
+    if(!Array.isArray(records) || !records.length)throw new Error('Empty taxonomy');
     const config=normalizedOptions(opts);
     const rootId=opts.rootId || records.find(n=>!n.parent)?.id;
     const {root}=makeHierarchy(records,rootId);
@@ -224,6 +228,12 @@
     const rawIndex=new Map(records.map(record=>[record.id,record]));
     const time=placeHorizontal(nodes,rawIndex,config);
     const segments=buildSegments(nodes);
+    if(config.mode==='time'){
+      for(const part of segments){
+        if(part.kind==='arm' && part.x2+1e-6<part.x1)
+          throw new Error('Time order conflicts with taxonomy: '+part.ownerId+' -> '+part.childId);
+      }
+    }
     const maxX=Math.max(...nodes.map(n=>n.x)),maxY=Math.max(...nodes.map(n=>n.y));
     return {
       nodes,segments,
