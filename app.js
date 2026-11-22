@@ -394,9 +394,55 @@
     drawNodes();
   }
 
+  // Consistent, measured labels: no candidate position jitter. Secondary
+  // labels are muted if their measured boxes overlap a higher-priority label.
+  // Tree geometry never changes to make room for text.
+  const measureCanvas=document.createElement('canvas');
+  const measureContext=measureCanvas.getContext('2d');
+  function measuredTextWidth(text,font='500 12px system-ui, sans-serif'){
+    if(!measureContext)return approximateLabelWidth(text);
+    measureContext.font=font;
+    return measureContext.measureText(text).width+7;
+  }
+  function chooseLabelsAtlas(){
+    const labels=new Map(),occupied=[];
+    const nodes=[...state.visible].sort((a,b)=>{
+      const value=n=>{
+        const m=state.layoutMeta.get(n.id);
+        return (state.selected===n.id?10000:0)
+          +(n.id===state.root?8000:0)
+          +(m?.collapsed?3000:0)
+          +(!m?.childIds.length?1600:500);
+      };
+      return value(b)-value(a) || state.pos.get(a.id).y-state.pos.get(b.id).y;
+    });
+    const overlaps=(r,o)=>r.left<o.right+7&&r.right+7>o.left&&
+      r.top<o.bottom+5&&r.bottom+5>o.top;
+    for(const n of nodes){
+      const p=state.pos.get(n.id),m=state.layoutMeta.get(n.id);
+      if(!p||!m)continue;
+      const collapsed=Boolean(m.collapsed);
+      const terminal=m.childIds.length===0&&!collapsed;
+      const text=collapsed?n.zh+' · '+m.hiddenDescendants+' 个后代':n.zh;
+      const dx=collapsed?56:14;
+      const dy=collapsed||terminal?0:-17;
+      const font=n.id===state.root?'650 13px system-ui, sans-serif':
+        collapsed?'600 12px system-ui, sans-serif':'500 12px system-ui, sans-serif';
+      const width=measuredTextWidth(text,font);
+      const rect={left:p.x+dx,right:p.x+dx+width,
+        top:p.y+dy-9,bottom:p.y+dy+10};
+      const collides=occupied.some(other=>overlaps(rect,other));
+      const hidden=collides&&n.id!==state.selected&&n.id!==state.root;
+      if(!hidden)occupied.push(rect);
+      labels.set(n.id,{dx,dy,side:'right',leaf:terminal,
+        collapsed,hidden,rect});
+    }
+    return labels;
+  }
+
   function drawNodes(){
     const nodes=$('nodeLayer');nodes.replaceChildren();
-    const labels=chooseLabels();
+    const labels=state.engine==='v2'?chooseLabelsAtlas():chooseLabels();
     state.visible.forEach(n=>{
       const point=state.pos.get(n.id),meta=labels.get(n.id);
       if(!point||!meta)return;
@@ -404,13 +450,18 @@
         transform:'translate('+point.x+' '+point.y+')','data-id':n.id,tabindex:0,role:'button',
         'aria-label':n.zh+'，'+n.rank+'，'+nodeAge(n)});
       node.append(make('circle',{class:'node-halo',r:12}),make('circle',{class:'node-core',r:n.id===state.root?6:4.8}));
-      const label=make('text',{class:'node-label',x:meta.dx,y:meta.dy,'text-anchor':meta.side==='right'?'start':'end',
-        'dominant-baseline':'middle'});
-      label.textContent=n.zh;
-      if(Math.abs(meta.dy)>=16){
-        node.append(make('path',{d:'M 0 0 L '+(meta.dx>0?7:-7)+' '+meta.dy,class:'node-label-guide'}));
+      if(!meta.collapsed){
+        const label=make('text',{class:'node-label'+(meta.hidden?' label-deemphasized':''),
+          x:meta.dx,y:meta.dy,
+          'text-anchor':meta.side==='right'?'start':'end',
+          'dominant-baseline':'middle'});
+        label.textContent=n.zh;
+        if(state.engine==='legacy'&&Math.abs(meta.dy)>=16){
+          node.append(make('path',{d:'M 0 0 L '+(meta.dx>0?7:-7)+' '+meta.dy,
+            class:'node-label-guide'}));
+        }
+        node.append(label);
       }
-      node.append(label);
       const hidden=state.hiddenById?.get(n.id)||0;
       const hasChildren=(children.get(n.id)||[]).length>0;
       const layoutNode=state.engine==='v2'?state.layoutMeta.get(n.id):null;
@@ -419,18 +470,36 @@
         : state.detail==='overview'&&hidden>=3&&hasChildren;
       if(n.id!==state.root && canToggle){
         const expanded=state.engine==='v2' && !layoutNode.collapsed;
-        const more=make('g',{class:'node-more'+(expanded?' expanded':''),
+        const more=make('g',{class:'node-more'+(expanded?' expanded':'')+
+          (layoutNode?.collapsed?' collapsed-summary':''),
           'data-expand':n.id,role:'button',tabindex:0,
-          'aria-label':expanded?'收起'+n.zh+'支系':'展开'+n.zh+'，查看另外 '+hidden+' 个节点'});
-        const text=expanded?'−':hidden>99?'99+':'+'+hidden;
-        const w=14+text.length*7.2;
-        more.append(make('rect',{x:9,y:18,width:w,height:18,rx:6}));
-        const countLabel=make('text',{x:9+w/2,y:30,'text-anchor':'middle'});
-        countLabel.textContent=text;more.append(countLabel);
+          'aria-label':expanded?'收起'+n.zh+'支系':'展开'+n.zh+'，查看 '+hidden+' 个后代'});
+        if(state.engine==='v2'&&layoutNode.collapsed){
+          // iTOL-inspired folded clade: a summary *glyph*, not an invented
+          // taxonomic node. Width is decorative; its tip is not an age.
+          const length=35+Math.min(13,Math.log2(hidden+1)*2);
+          const half=9+Math.min(3,Math.log2(hidden+1));
+          more.append(make('path',{class:'clade-wedge',
+            d:'M 10 '+(-half)+' L '+(10+length)+' 0 L 10 '+half+' Z'}));
+          const caption=make('text',{x:10+length+10,y:4,
+            class:'clade-summary-caption'+(meta.hidden?' label-deemphasized':'')});
+          caption.textContent=n.zh+' · '+hidden+' 个后代';
+          more.append(caption);
+          more.append(make('rect',{class:'clade-hit-area',x:7,y:-18,
+            width:length+17+measuredTextWidth(caption.textContent),height:36,rx:5}));
+        }else{
+          const glyph=expanded?'−':hidden>99?'99+':'+'+hidden;
+          const width=14+glyph.length*7.2;
+          more.append(make('rect',{x:9,y:18,width,height:18,rx:6}));
+          const count=make('text',{x:9+width/2,y:30,'text-anchor':'middle'});
+          count.textContent=glyph;more.append(count);
+        }
         const action=()=>state.engine==='v2'?toggleBranch(n.id):focusRoot(n.id);
         more.addEventListener('click',event=>{event.stopPropagation();action();});
         more.addEventListener('keydown',event=>{
-          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();action();}
+          if(event.key==='Enter'||event.key===' '){
+            event.preventDefault();event.stopPropagation();action();
+          }
         });
         node.append(more);
       }
