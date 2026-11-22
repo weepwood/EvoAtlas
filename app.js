@@ -147,7 +147,7 @@
       }
     }
     state.layoutDepthStep=state.layoutMode==='structure'
-      ?visibleDepth<=1?420:visibleDepth===2?240:165
+      ?stageWidth<700?112:visibleDepth<=1?420:visibleDepth===2?240:165
       :165;
     state.layoutPlotWidth=state.layoutMode==='structure'
       ?Math.max(1040,stageWidth*1.2)
