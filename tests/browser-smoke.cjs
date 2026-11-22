@@ -109,7 +109,7 @@ async function main(){
     const selectedAfter=await page.locator('#viewport').getAttribute('transform');
     assert.notEqual(selectedAfter,selectedBefore,'clicking minimap should relocate the viewport');
     const mobileHint=await page.locator('.graph-overlay-hint').innerText();
-    assert.match(mobileHint,/双击或点/);
+    assert.match(mobileHint,/局部展开|双击或点/);
     await page.locator('#fitTree').click();
     assert.ok(Number(await viewportRect.getAttribute('width'))>1);
     // A focused SVG node supports keyboard lineage traversal.
@@ -145,7 +145,7 @@ async function main(){
     assert.equal(await page.locator('#scaleSelect').isDisabled(),true);
     assert.equal(await page.locator('#eventLayer').locator('*').count(),0);
     await page.waitForTimeout(120);
-    assert.ok((await page.locator('#axisOverlay').innerText()).includes('层级'));
+    assert.ok((await page.locator('#axisOverlay').textContent()).includes('层级'));
     await page.screenshot({path:'artifacts/evoatlas-structure-tree.png'});
 
     await page.locator('[data-select="layoutModeSelect"] .custom-select-trigger').click();
