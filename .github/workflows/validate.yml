@@ -30,3 +30,5 @@ jobs:
         run: python3 scripts/validate_data.py
       - name: HTML and JavaScript element contracts
         run: python3 scripts/validate_ui.py
+      - name: Research database directory metadata
+        run: node scripts/validate_research.js
