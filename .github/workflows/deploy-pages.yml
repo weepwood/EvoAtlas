@@ -47,6 +47,7 @@ jobs:
         run: |
           python3 scripts/validate_data.py
           python3 scripts/validate_ui.py
+          node scripts/validate_research.js
 
       - name: Prepare isolated Pages artifact
         run: |
