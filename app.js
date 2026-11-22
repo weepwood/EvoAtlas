@@ -426,8 +426,8 @@
       const text=collapsed?n.zh+' · '+m.hiddenDescendants+' 个后代':n.zh;
       const dx=collapsed?56:14;
       const dy=collapsed||terminal?0:-17;
-      const font=n.id===state.root?'650 13px system-ui, sans-serif':
-        collapsed?'600 12px system-ui, sans-serif':'500 12px system-ui, sans-serif';
+      const font=n.id===state.root?'650 14px system-ui, sans-serif':
+        collapsed?'600 13px system-ui, sans-serif':'500 13px system-ui, sans-serif';
       const width=measuredTextWidth(text,font);
       const rect={left:p.x+dx,right:p.x+dx+width,
         top:p.y+dy-9,bottom:p.y+dy+10};
