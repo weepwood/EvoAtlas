@@ -60,6 +60,11 @@
       const relativeDepth=path(n.id).findIndex(x=>x.id===state.root);
       if(relativeDepth>=0 && (relativeDepth<=3 || featured.has(n.id) || n.id===state.selected)) include.add(n.id);
     });
+    // Preserve every ancestor of a displayed featured taxon. Otherwise the
+    // overview would imply false direct parent-child evolutionary links.
+    [...include].forEach(id=>{
+      path(id).forEach(n=>{if(inside(n.id,state.root))include.add(n.id);});
+    });
     if(state.selected && inside(state.selected,state.root)){
       path(state.selected).forEach(n=>{if(inside(n.id,state.root))include.add(n.id);});
     }
@@ -229,6 +234,7 @@
   }
   function focusRoot(id){
     if(!byId.has(id))return;
+    if(state.view!=='tree')switchView('tree',false);
     state.root=id;
     if(state.selected&&!inside(state.selected,id))state.selected=null;
     render(true);
