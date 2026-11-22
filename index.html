@@ -37,7 +37,7 @@
           <strong>EvoAtlas</strong>
         </a>
         <span class="header-divider"></span>
-        <span class="header-context" id="headerContext">生命之树</span>
+        <nav class="header-breadcrumb" id="headerBreadcrumb" aria-label="当前图谱路径"><span>全部生命</span></nav>
       </div>
       <div class="header-right">
         <span class="dataset-tag">教学数据集 · 非完整物种库</span>
@@ -85,17 +85,7 @@
       </aside>
       <main class="work-area" id="mainArea">
         <section id="treeView" class="view-panel active" data-panel="tree" aria-label="生命之树">
-          <div class="workspace-heading">
-            <div class="heading-copy">
-              <div class="crumbs" id="crumbs"><button data-focus="luca">全部生命</button></div>
-              <h1 id="graphTitle">全部生命</h1>
-              <p id="graphSubtitle">探索代表性类群之间的演化关系</p>
-            </div>
-            <div class="workspace-heading-actions">
-              <button id="exploreHuman" class="subtle-button">追踪人类谱系 <svg><use href="#i-arrow"/></svg></button>
-            </div>
-          </div>
-          <div class="viewer">
+          <div class="viewer viewer--full">
             <div class="viewer-toolbar">
               <div class="viewer-options">
                 <label>时间坐标
@@ -109,7 +99,6 @@
               <label class="check-option"><input id="extinctToggle" type="checkbox" checked><span>化石类群</span></label>
               <label class="check-option"><input id="eventToggle" type="checkbox" checked><span>灭绝事件</span></label>
               <div class="toolbar-spacer"></div>
-              <span class="viewer-stat" id="visibleCount">— 个节点</span>
               <div class="zoom-tools">
                 <button class="icon-button" id="zoomOut" aria-label="缩小" title="缩小"><svg><use href="#i-minus"/></svg></button>
                 <button class="icon-button" id="zoomIn" aria-label="放大" title="放大"><svg><use href="#i-plus"/></svg></button>
@@ -186,6 +175,7 @@
   <script src="./data/data.js"></script>
   <script src="./data/curation.js"></script>
   <script src="./data/research.js"></script>
+  <script src="./ui/custom-select.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
