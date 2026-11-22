@@ -48,16 +48,43 @@
     }
     const visible=new Set([rootId]),collapsed=new Set();
     if(detail==='overview'){
-      const queue=[rootId],limit=Math.max(3,Number.isFinite(budget)?Math.floor(budget):58);
-      for(let at=0;at<queue.length;at++){
-        const id=queue[at],children=kids.get(id)||[];
-        if(!children.length)continue;
-        if(manuallyFolded.has(id)){
-          collapsed.add(id);continue;
+      const limit=Math.max(3,Number.isFinite(budget)?Math.floor(budget):36);
+      const rootChildren=kids.get(rootId)||[];
+      const topGroups=rootChildren.length?rootChildren:[rootId];
+      const queues=new Map(topGroups.map(id=>[id,[id]]));
+      const offsets=new Map(topGroups.map(id=>[id,0]));
+      const suppressed=id=>manuallyFolded.has(id)&&!forced.has(id);
+      // Root children must remain discoverable; the budget is a soft cap
+      // for a very broad root, never an excuse to invent a taxonomic group.
+      if(!suppressed(rootId)){
+        for(const id of rootChildren)visible.add(id);
+      }else{
+        collapsed.add(rootId);
+      }
+      // Round-robin between the root's distinct lineages. No input-order
+      // starvation: bacteria, archaea, and eukaryotes get comparable space.
+      let remaining=true;
+      while(remaining){
+        remaining=false;
+        for(const group of topGroups){
+          const queue=queues.get(group);
+          const cursor=offsets.get(group);
+          if(cursor>=queue.length)continue;
+          remaining=true;
+          const id=queue[cursor];
+          offsets.set(group,cursor+1);
+          if(!visible.has(id))continue;
+          const childIds=kids.get(id)||[];
+          if(!childIds.length)continue;
+          if(suppressed(id)){collapsed.add(id);continue;}
+          const mandatory=forced.has(id)||expanded.has(id);
+          if(mandatory||visible.size+childIds.length<=limit){
+            for(const childId of childIds){
+              visible.add(childId);
+              queue.push(childId);
+            }
+          }else collapsed.add(id);
         }
-        if(forced.has(id)||expanded.has(id)||visible.size+children.length<=limit){
-          for(const child of children){visible.add(child);queue.push(child);}
-        }else collapsed.add(id);
       }
     }else{
       for(const node of candidates){

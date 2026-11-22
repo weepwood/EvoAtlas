@@ -89,9 +89,9 @@
             <div class="viewer-toolbar">
               <div class="viewer-options">
                 <label>布局
-                  <select id="layoutModeSelect" aria-label="布局模式"><option value="time">时间树</option><option value="structure">结构树</option></select>
+                  <select id="layoutModeSelect" aria-label="布局模式"><option value="structure" selected>结构树</option><option value="time">时间树</option></select>
                 </label>
-                <label>时间坐标
+                <label data-time-only>时间坐标
                   <select id="scaleSelect" aria-label="时间坐标"><option value="log">对数</option><option value="linear">线性</option></select>
                 </label>
                 <label>信息密度
@@ -100,7 +100,7 @@
               </div>
               <div class="toolbar-divider"></div>
               <label class="check-option"><input id="extinctToggle" type="checkbox" checked><span>化石类群</span></label>
-              <label class="check-option"><input id="eventToggle" type="checkbox" checked><span>灭绝事件</span></label>
+              <label class="check-option" data-time-only><input id="eventToggle" type="checkbox" checked><span>灭绝事件</span></label>
               <div class="toolbar-spacer"></div>
               <div class="zoom-tools">
                 <button class="icon-button" id="zoomOut" aria-label="缩小" title="缩小"><svg><use href="#i-minus"/></svg></button>

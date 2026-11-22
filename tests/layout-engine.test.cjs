@@ -144,3 +144,32 @@ test('time projection rejects negative or contradictory chronological branches',
     {id:'s',parent:'r',ageMa:20}
   ],{rootId:'r',mode:'time'}),/Time order conflicts/);
 });
+
+
+test('structural atlas alignment places genuine terminal taxa in one readable column',()=>{
+  const fixture=[
+    {id:'root',parent:null},
+    {id:'early',parent:'root'},
+    {id:'middle',parent:'root'},
+    {id:'late',parent:'middle'},
+    {id:'other',parent:'root'},
+    {id:'deep',parent:'other'},
+    {id:'tip',parent:'deep'}
+  ];
+  const atlas=layoutTree(fixture,{rootId:'root',mode:'structure',alignTips:true});
+  const plain=layoutTree(fixture,{rootId:'root',mode:'structure'});
+  const tips=atlas.nodes.filter(n=>n.childIds.length===0&&!n.collapsed);
+  assert.equal(new Set(tips.map(n=>n.x)).size,1,'tips must share a column');
+  const byPlain=new Map(plain.nodes.map(n=>[n.id,n]));
+  assert.ok(byPlain.get('early').x<byPlain.get('tip').x);
+  for(const n of atlas.nodes){
+    assert.equal(n.y,byPlain.get(n.id).y,'aligning terminal labels cannot change the vertical tree');
+    assert.deepEqual(n.childIds,byPlain.get(n.id).childIds);
+  }
+  const folded=layoutTree(fixture,{rootId:'root',mode:'structure',
+    collapsedIds:['other'],alignTips:true});
+  const clade=folded.nodes.find(n=>n.id==='other');
+  const nonfolded=folded.nodes.filter(n=>!n.childIds.length&&!n.collapsed);
+  assert.ok(clade.collapsed);
+  assert.ok(clade.x<nonfolded[0].x,'folded summary stays at its real depth, not the tip label column');
+});

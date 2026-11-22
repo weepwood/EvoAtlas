@@ -21,7 +21,7 @@
     visible:[],parents:new Map(),pos:new Map(),width:1500,height:700,maxMa:4000,tx:0,ty:0,zoom:1,drag:null,
     searchHits:[],searchIndex:0,theme:'system',
     engine:(new URLSearchParams(location.search).get('layout')==='legacy'||!window.EvoLayoutEngine||!window.EvoTreeProjection)?'legacy':'v2',
-    layoutMode:'time',foldedIds:new Set(),expandedIds:new Set(),
+    layoutMode:'structure',foldedIds:new Set(),expandedIds:new Set(),
     layoutSegments:[],layoutMeta:new Map(),layoutDepthStep:145,
     layoutMarginX:58,layoutRightInset:185,layoutPlotWidth:1400};
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -120,7 +120,7 @@
   function buildV2(){
     const view=window.EvoTreeProjection.project(taxa,{
       rootId:state.root,detail:state.detail,selectedId:state.selected,
-      extinct:state.extinct,budget:window.innerWidth<700?34:58,
+      extinct:state.extinct,budget:window.innerWidth<700?20:36,
       foldedIds:state.foldedIds,expandedIds:state.expandedIds
     });
     state.layoutSource=view;
@@ -131,30 +131,57 @@
   }
   function layoutV2(){
     const stage=$('graphStage'),stageWidth=stage.clientWidth||900;
-    state.layoutMarginX=58;state.layoutRightInset=185;state.layoutDepthStep=145;
+    state.layoutMarginX=68;state.layoutRightInset=310;
+    // A focused star-like clade often has only one or two levels. Its tips
+    // should use the canvas width instead of clustering next to the trunk.
+    const allowed=new Set(state.layoutSource.records.map(n=>n.id));
+    const folded=new Set(state.layoutSource.collapsedIds);
+    let visibleDepth=0;
+    const stack=[[state.root,0]];
+    while(stack.length){
+      const [id,depth]=stack.pop();
+      visibleDepth=Math.max(visibleDepth,depth);
+      if(folded.has(id))continue;
+      for(const child of children.get(id)||[]){
+        if(allowed.has(child))stack.push([child,depth+1]);
+      }
+    }
+    state.layoutDepthStep=state.layoutMode==='structure'
+      ?stageWidth<700?112:visibleDepth<=1?420:visibleDepth===2?240:165
+      :165;
     state.layoutPlotWidth=state.layoutMode==='structure'
       ?Math.max(1040,stageWidth*1.2)
       :state.scale==='linear'?Math.max(960,stageWidth*1.18)
       :Math.max(940,stageWidth*1.12);
     const result=window.EvoLayoutEngine.layoutTree(state.layoutSource.records,{
       rootId:state.root,mode:state.layoutMode,timeScale:state.scale,
-      collapsedIds:state.layoutSource.collapsedIds,sort:'input',
+      collapsedIds:state.layoutSource.collapsedIds,sort:'input',alignTips:state.layoutMode==='structure',
       plotWidth:state.layoutPlotWidth,
       marginX:state.layoutMarginX,rightInset:state.layoutRightInset,
-      marginY:58,labelHeight:19,leafGap:13,subtreeGap:25,depthStep:state.layoutDepthStep
+      marginY:64,labelHeight:22,leafGap:16,subtreeGap:27,depthStep:state.layoutDepthStep
     });
     state.layoutMeta=new Map(result.nodes.map(n=>[n.id,n]));
     state.visible=result.nodes.map(n=>byId.get(n.id));
     state.parents=new Map(result.nodes.map(n=>[n.id,n.parentId]));
-    state.pos=new Map(result.nodes.map(n=>[n.id,{x:n.x,y:n.y}]));
     state.hiddenById=new Map(result.nodes.map(n=>[n.id,n.hiddenDescendants]));
     const stageHeight=stage.clientHeight||600;
+    // A small focused tree should not occupy only a 50px strip in a tall
+    // mobile canvas. Stretch Y alone; X still means depth or teaching age.
+    const yValues=result.nodes.map(n=>n.y);
+    const minY=Math.min(...yValues),maxY=Math.max(...yValues);
+    const span=maxY-minY;
+    const tips=result.nodes.filter(n=>n.childIds.length===0).length;
+    const yFactor=tips>=2&&tips<=8&&span>0
+      ?Math.max(1,Math.min(4,(stageHeight*.52)/span)):1;
+    const laidOutHeight=128+span*yFactor;
     const minHeight=Math.max(440,(stageHeight-46)/Math.max(.62,Math.min(1,(stageWidth-44)/result.bounds.width)));
-    const extraY=Math.max(0,minHeight-result.bounds.height)/2;
-    state.layoutSegments=result.segments.map(seg=>({...seg,y1:seg.y1+extraY,y2:seg.y2+extraY}));
-    state.pos.forEach(p=>p.y+=extraY);
+    const extraY=Math.max(0,minHeight-laidOutHeight)/2;
+    const mapY=y=>64+(y-minY)*yFactor+extraY;
+    state.pos=new Map(result.nodes.map(n=>[n.id,{x:n.x,y:mapY(n.y)}]));
+    state.layoutSegments=result.segments.map(seg=>({...seg,
+      y1:mapY(seg.y1),y2:mapY(seg.y2)}));
     state.width=result.bounds.width;
-    state.height=Math.max(result.bounds.height,minHeight);
+    state.height=Math.max(laidOutHeight,minHeight);
     state.maxMa=result.axis.maxMa||0;
     state.layoutStats=result.stats;
     if(result.stats.visibleNodes!==state.visible.length)throw Error('Layout node count mismatch');
@@ -394,9 +421,55 @@
     drawNodes();
   }
 
+  // Consistent, measured labels: no candidate position jitter. Secondary
+  // labels are muted if their measured boxes overlap a higher-priority label.
+  // Tree geometry never changes to make room for text.
+  const measureCanvas=document.createElement('canvas');
+  const measureContext=measureCanvas.getContext('2d');
+  function measuredTextWidth(text,font='500 12px system-ui, sans-serif'){
+    if(!measureContext)return approximateLabelWidth(text);
+    measureContext.font=font;
+    return measureContext.measureText(text).width+7;
+  }
+  function chooseLabelsAtlas(){
+    const labels=new Map(),occupied=[];
+    const nodes=[...state.visible].sort((a,b)=>{
+      const value=n=>{
+        const m=state.layoutMeta.get(n.id);
+        return (state.selected===n.id?10000:0)
+          +(n.id===state.root?8000:0)
+          +(m?.collapsed?3000:0)
+          +(!m?.childIds.length?1600:500);
+      };
+      return value(b)-value(a) || state.pos.get(a.id).y-state.pos.get(b.id).y;
+    });
+    const overlaps=(r,o)=>r.left<o.right+7&&r.right+7>o.left&&
+      r.top<o.bottom+5&&r.bottom+5>o.top;
+    for(const n of nodes){
+      const p=state.pos.get(n.id),m=state.layoutMeta.get(n.id);
+      if(!p||!m)continue;
+      const collapsed=Boolean(m.collapsed);
+      const terminal=m.childIds.length===0&&!collapsed;
+      const text=collapsed?n.zh+' · '+m.hiddenDescendants+' 个后代':n.zh;
+      const dx=collapsed?56:14;
+      const dy=collapsed||terminal?0:-17;
+      const font=n.id===state.root?'650 16px system-ui, sans-serif':
+        collapsed?'600 14px system-ui, sans-serif':'500 15px system-ui, sans-serif';
+      const width=measuredTextWidth(text,font);
+      const rect={left:p.x+dx,right:p.x+dx+width,
+        top:p.y+dy-9,bottom:p.y+dy+10};
+      const collides=occupied.some(other=>overlaps(rect,other));
+      const hidden=collides&&n.id!==state.selected&&n.id!==state.root;
+      if(!hidden)occupied.push(rect);
+      labels.set(n.id,{dx,dy,side:'right',leaf:terminal,
+        collapsed,hidden,rect});
+    }
+    return labels;
+  }
+
   function drawNodes(){
     const nodes=$('nodeLayer');nodes.replaceChildren();
-    const labels=chooseLabels();
+    const labels=state.engine==='v2'?chooseLabelsAtlas():chooseLabels();
     state.visible.forEach(n=>{
       const point=state.pos.get(n.id),meta=labels.get(n.id);
       if(!point||!meta)return;
@@ -404,13 +477,18 @@
         transform:'translate('+point.x+' '+point.y+')','data-id':n.id,tabindex:0,role:'button',
         'aria-label':n.zh+'，'+n.rank+'，'+nodeAge(n)});
       node.append(make('circle',{class:'node-halo',r:12}),make('circle',{class:'node-core',r:n.id===state.root?6:4.8}));
-      const label=make('text',{class:'node-label',x:meta.dx,y:meta.dy,'text-anchor':meta.side==='right'?'start':'end',
-        'dominant-baseline':'middle'});
-      label.textContent=n.zh;
-      if(Math.abs(meta.dy)>=16){
-        node.append(make('path',{d:'M 0 0 L '+(meta.dx>0?7:-7)+' '+meta.dy,class:'node-label-guide'}));
+      if(!meta.collapsed){
+        const label=make('text',{class:'node-label'+(meta.hidden?' label-deemphasized':''),
+          x:meta.dx,y:meta.dy,
+          'text-anchor':meta.side==='right'?'start':'end',
+          'dominant-baseline':'middle'});
+        label.textContent=n.zh;
+        if(state.engine==='legacy'&&Math.abs(meta.dy)>=16){
+          node.append(make('path',{d:'M 0 0 L '+(meta.dx>0?7:-7)+' '+meta.dy,
+            class:'node-label-guide'}));
+        }
+        node.append(label);
       }
-      node.append(label);
       const hidden=state.hiddenById?.get(n.id)||0;
       const hasChildren=(children.get(n.id)||[]).length>0;
       const layoutNode=state.engine==='v2'?state.layoutMeta.get(n.id):null;
@@ -419,18 +497,36 @@
         : state.detail==='overview'&&hidden>=3&&hasChildren;
       if(n.id!==state.root && canToggle){
         const expanded=state.engine==='v2' && !layoutNode.collapsed;
-        const more=make('g',{class:'node-more'+(expanded?' expanded':''),
+        const more=make('g',{class:'node-more'+(expanded?' expanded':'')+
+          (layoutNode?.collapsed?' collapsed-summary':''),
           'data-expand':n.id,role:'button',tabindex:0,
-          'aria-label':expanded?'收起'+n.zh+'支系':'展开'+n.zh+'，查看另外 '+hidden+' 个节点'});
-        const text=expanded?'−':hidden>99?'99+':'+'+hidden;
-        const w=14+text.length*7.2;
-        more.append(make('rect',{x:9,y:18,width:w,height:18,rx:6}));
-        const countLabel=make('text',{x:9+w/2,y:30,'text-anchor':'middle'});
-        countLabel.textContent=text;more.append(countLabel);
+          'aria-label':expanded?'收起'+n.zh+'支系':'展开'+n.zh+'，查看 '+hidden+' 个后代'});
+        if(state.engine==='v2'&&layoutNode.collapsed){
+          // iTOL-inspired folded clade: a summary *glyph*, not an invented
+          // taxonomic node. Width is decorative; its tip is not an age.
+          const length=35+Math.min(13,Math.log2(hidden+1)*2);
+          const half=9+Math.min(3,Math.log2(hidden+1));
+          more.append(make('path',{class:'clade-wedge',
+            d:'M 10 '+(-half)+' L '+(10+length)+' 0 L 10 '+half+' Z'}));
+          const caption=make('text',{x:10+length+10,y:4,
+            class:'clade-summary-caption'+(meta.hidden?' label-deemphasized':'')});
+          caption.textContent=n.zh+' · '+hidden+' 个后代';
+          more.append(caption);
+          more.append(make('rect',{class:'clade-hit-area',x:7,y:-18,
+            width:length+17+measuredTextWidth(caption.textContent),height:36,rx:5}));
+        }else{
+          const glyph=expanded?'−':hidden>99?'99+':'+'+hidden;
+          const width=14+glyph.length*7.2;
+          more.append(make('rect',{x:9,y:18,width,height:18,rx:6}));
+          const count=make('text',{x:9+width/2,y:30,'text-anchor':'middle'});
+          count.textContent=glyph;more.append(count);
+        }
         const action=()=>state.engine==='v2'?toggleBranch(n.id):focusRoot(n.id);
         more.addEventListener('click',event=>{event.stopPropagation();action();});
         more.addEventListener('keydown',event=>{
-          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();action();}
+          if(event.key==='Enter'||event.key===' '){
+            event.preventDefault();event.stopPropagation();action();
+          }
         });
         node.append(more);
       }
@@ -658,6 +754,7 @@
     hideTip();
     build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
     $('graphStage').dataset.layout=state.layoutMode;
+    $('treeView').dataset.layout=state.layoutMode;
     $('graphStage').dataset.engine=state.engine;
     const structure=state.engine==='v2' && state.layoutMode==='structure';
     $('scaleSelect').disabled=structure;
@@ -667,7 +764,7 @@
     $('graphEmpty').hidden=state.visible.length>0;
     const hint=$('graphStage').querySelector('.graph-overlay-hint');
     if(hint)hint.textContent=state.engine==='v2'
-      ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · +N 局部展开 · 双击聚焦'
+      ? '点击三角展开支系 · 双击聚焦 · 滚轮缩放'
       : state.detail==='overview'&&state.visible.length<state.totalAvailable
         ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
         : '滚轮缩放 · 拖拽移动 · 点击类群查看';
@@ -769,9 +866,9 @@
     state.selected=null;$('emptyDetail').hidden=false;$('taxonDetail').hidden=true;closeInspector();
   }
   function reset(){
-    Object.assign(state,{root:'luca',scale:'log',layoutMode:'time',detail:'overview',extinct:true,events:true,selected:null});
+    Object.assign(state,{root:'luca',scale:'log',layoutMode:state.engine==='legacy'?'time':'structure',detail:'overview',extinct:true,events:true,selected:null});
     state.foldedIds.clear();state.expandedIds.clear();
-    $('scaleSelect').value='log';$('layoutModeSelect').value='time';$('detailSelect').value='overview';
+    $('scaleSelect').value='log';$('layoutModeSelect').value=state.layoutMode;$('detailSelect').value='overview';
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
     window.EvoSelect?.syncAll();
     $('taxonSearch').value='';$('searchResults').hidden=true;
@@ -1128,6 +1225,8 @@
     if(byId.has('sapiens'))$('speciesA').value='sapiens';
     if(byId.has('pan'))$('speciesB').value='pan';
     if(state.engine==='legacy'){
+      state.layoutMode='time';
+      $('layoutModeSelect').value='time';
       $('layoutModeSelect').disabled=true;
       $('layoutModeSelect').title='旧版回退模式仅支持时间坐标';
     }

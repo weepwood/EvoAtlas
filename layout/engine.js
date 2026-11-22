@@ -4,7 +4,7 @@
  * IMPORTANT: This module does not modify the canonical taxonomy or generate
  * synthetic evolutionary nodes. Its returned coordinates are presentation.
  *
- * Intentionally NOT wired to app.js yet. See docs/layout-engine-v2.md.
+ * Used by the SVG renderer. See docs/layout-engine-v2.md.
  */
 (function (root, factory) {
   const api=factory();
@@ -17,7 +17,7 @@
     mode:'structure',timeScale:'linear',sort:'input',
     leafGap:12,subtreeGap:22,labelHeight:18,
     depthStep:145,plotWidth:1400,marginX:58,marginY:45,rightInset:185,
-    collapsedIds:[]
+    collapsedIds:[],alignTips:false
   });
 
   function normalizedOptions(options={}){
@@ -34,6 +34,7 @@
     if(cfg.plotWidth<=cfg.marginX+cfg.rightInset+50)
       throw new Error('plotWidth does not leave space for time projection');
     cfg.collapsedIds=new Set(cfg.collapsedIds);
+    cfg.alignTips=cfg.alignTips===true;
     return cfg;
   }
 
@@ -160,8 +161,14 @@
 
   function placeHorizontal(nodes,recordsById,config){
     if(config.mode==='structure'){
-      // The structure view must NOT require fossil dates or imply a clock.
-      for(const n of nodes)n.x=config.marginX+n.depth*config.depthStep;
+      // A cladogram has no branch-length semantics. For dense species
+      // directories, align *actual tips*, never folded clade summaries.
+      const finalDepth=Math.max(0,...nodes.map(n=>n.depth));
+      for(const n of nodes){
+        const isTip=n.childIds.length===0 && !n.collapsed;
+        const depth=config.alignTips && isTip?finalDepth:n.depth;
+        n.x=config.marginX+depth*config.depthStep;
+      }
       return {maxAge:null,axisKind:null};
     }
     const maxAge=Math.max(1,...nodes.map(n=>ageOf(recordsById.get(n.id))));
@@ -244,7 +251,7 @@
         arms:segments.filter(s=>s.kind==='arm').length,
         highFanout:nodes.filter(n=>n.childIds.length>=8).length,
         collapsedNodes:nodes.filter(n=>n.collapsed).length},
-      config:{mode:config.mode,timeScale:config.timeScale,sort:config.sort}
+      config:{mode:config.mode,timeScale:config.timeScale,sort:config.sort,alignTips:config.alignTips}
     };
   }
   return {layoutTree,makeHierarchy,ageOf};

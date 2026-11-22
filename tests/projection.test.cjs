@@ -79,3 +79,21 @@ test('full mode includes entire focused subtree except manually folded descendan
   assert.ok(reduced.graph.nodes.length<full.graph.nodes.length);
   assert.equal(reduced.byId.get('carnivora').collapsed,true);
 });
+
+
+test('root overview distributes attention across the major lineages',()=>{
+  const result=view('luca',{budget:36});
+  const parentIndex=new Map(taxonomy.map(n=>[n.id,n.parent]));
+  const counts={bacteria:0,archaea:0,eukaryota:0};
+  for(const node of result.graph.nodes){
+    let id=node.id;
+    while(parentIndex.get(id)&&parentIndex.get(id)!=='luca'){
+      id=parentIndex.get(id);
+    }
+    if(Object.hasOwn(counts,id))counts[id]++;
+  }
+  assert.ok(counts.bacteria<=24,'bacteria must not take nearly the whole overview');
+  assert.ok(counts.archaea>=3,'archaea must remain discoverable');
+  assert.ok(counts.eukaryota>=9,'eukaryotes must receive visible space');
+  assert.ok(result.graph.nodes.length<=36);
+});
