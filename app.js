@@ -87,24 +87,50 @@
       : 1-Math.log10(ma+1)/Math.log10(state.maxMa+1);
     return left+usable*Math.max(0,Math.min(1,fraction));
   }
-  function layout() {
+  function layout(){
     const branches=new Map(state.visible.map(n=>[n.id,[]]));
-    state.visible.forEach(n=>{const p=state.parents.get(n.id);if(p && branches.has(p))branches.get(p).push(n.id);});
-    let leaves=0;const yy=new Map(),top=86,gap=state.detail==='full'?42:54;
+    state.visible.forEach(n=>{
+      const parent=state.parents.get(n.id);
+      if(parent && branches.has(parent))branches.get(parent).push(n.id);
+    });
+    let leaves=0;
+    const yy=new Map(),top=86,gap=state.detail==='full'?42:54;
     const setY=id=>{
-      const kids=branches.get(id)||[];
-      if(!kids.length){const value=top+leaves++*gap;yy.set(id,value);return value;}
-      const values=kids.map(setY),value=(values[0]+values[values.length-1])/2;
-      yy.set(id,value);return value;
+      const descendants=branches.get(id)||[];
+      if(!descendants.length){
+        const y=top+leaves++*gap;yy.set(id,y);return y;
+      }
+      const positions=descendants.map(setY);
+      const midpoint=(positions[0]+positions[positions.length-1])/2;
+      yy.set(id,midpoint);return midpoint;
     };
     if(branches.has(state.root))setY(state.root);
-    state.height=Math.max(490,top+Math.max(1,leaves-1)*gap+90);
-    // Adapt the virtual canvas to the real reading area before fitting;
-    // a fixed 1400px overview produced illegibly small text on laptops.
-    const stageWidth=$('graphStage').clientWidth||900;
+
+    const stage=$('graphStage');
+    const stageWidth=stage.clientWidth||900;
+    const stageHeight=stage.clientHeight||600;
+    // Linear scale still uses exact linear x projection. Avoid forcing a
+    // 1500px virtual width into an 800px viewport, which shrinks all labels.
     state.width=state.scale==='linear'
-      ? Math.max(1450,stageWidth*1.7)
-      : state.detail==='full'?Math.max(1180,stageWidth*1.3):Math.max(970,stageWidth*1.12);
+      ? Math.max(950,stageWidth*1.16)
+      : state.detail==='full'
+        ? Math.max(1100,stageWidth*1.24)
+        : Math.max(920,stageWidth*1.10);
+
+    const baseHeight=top+Math.max(1,leaves-1)*gap+95;
+    const tentativeWidthZoom=(stageWidth-44)/state.width;
+    const targetWorldHeight=Math.max(470,(stageHeight-46)/Math.max(.55,Math.min(1,tentativeWidthZoom)));
+    state.height=Math.max(baseHeight,targetWorldHeight);
+
+    // Vertical branch spacing has no evolutionary time meaning. Expand short
+    // focused subtrees to use the available height without distorting x age.
+    if(leaves>1 && state.height>baseHeight){
+      const available=state.height-top-95;
+      const original=(leaves-1)*gap;
+      const factor=Math.max(1,available/original);
+      yy.forEach((y,id)=>yy.set(id,top+(y-top)*factor));
+    }
+
     state.maxMa=Math.max(...state.visible.map(timeOf),timeOf(byId.get(state.root))||1,1);
     state.pos=new Map(state.visible.map(n=>[n.id,{x:xFor(timeOf(n)),y:yy.get(n.id)||top}]));
   }
