@@ -1,6 +1,6 @@
 # EvoAtlas Layout Engine v2 — 多分叉布局引擎设计
 
-状态：**可测试的隔离原型（尚未接入网页）**  
+状态：**V2 已接入 SVG 工作台；保留旧版回退入口**  
 设计日期：2026-11-23  
 源码：`layout/engine.js`  
 契约测试：`tests/layout-engine.test.cjs`
@@ -190,6 +190,16 @@ const layout=EvoLayoutEngine.layoutTree(window.EVO_TAXA,{
 ```
 
 `stem` 是**绘制图元**，不是数据库祖先或演化时间；`childIds` 永远对应真实节点标识。
+
+## 9. 接入结果（2026-11-23）
+
+- **已经接线**：`index.html` 加载 `layout/engine.js` 和 `layout/projection.js`，`app.js` 在 V2 模式采用其节点坐标和共享 `stem/arm` 线段。
+- **概览的关系保护**：不再通过“最近可见祖先”直接重连被隐藏节点，而是折叠完整真实子树；在局部展开时继续保留其真实 parent ID。
+- **局部折叠**：`state.foldedIds` 与 `state.expandedIds` 是单独的展示状态，点击 `+N/−` 在当前根下展开／折叠并保留锚点；双击仍聚焦整条支系。
+- **独立坐标语义**：新增时间树/结构树选择；结构模式关闭灭绝事件标记，禁用时间坐标下拉菜单，并使用层级刻度。
+- **回退**：通过 URL 查询参数 `?layout=legacy` 使用原图谱绘制方式；故障排查后再移除旧代码。
+- **部署**：Pages 工作流需要同时打包 `layout/engine.js`、`layout/projection.js`；CI 增加投影与真实数据几何不变量测试。
+- **尚待深入**：局部增量布局动画、真实字体测量驱动的标签碰撞、Worker/LOD 的十万级优化。不能以“已接线”替代这些性能和科学证据工作。
 
 ## 9. 与当前 app.js 的迁移路线
 
