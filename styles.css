@@ -510,3 +510,16 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
 .graph-stage[data-engine=v2] .node.internal .node-label{font-size:14px}
 .graph-stage[data-engine=v2] .node[data-id=luca] .node-label{font-size:16px}
 .graph-stage[data-engine=v2] .clade-summary-caption{font-size:14px}
+
+
+/* Minimap should reveal its actual tree rather than looking like a filled tile. */
+.graph-stage[data-engine=v2] #minimapViewport{
+  fill:transparent;stroke:var(--primary);
+  stroke-width:1.35;opacity:.85;
+}
+.graph-stage[data-engine=v2] #minimapEdges path{
+  stroke:var(--muted);
+  stroke-width:1.05;
+  opacity:.85;
+}
+.graph-stage[data-engine=v2] #minimapNodes circle.mini-node{opacity:.9}
