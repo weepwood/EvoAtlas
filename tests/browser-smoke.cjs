@@ -127,7 +127,7 @@ async function main(){
     const selectedAfter=await page.locator('#viewport').getAttribute('transform');
     assert.notEqual(selectedAfter,selectedBefore,'clicking minimap should relocate the viewport');
     const mobileHint=await page.locator('.graph-overlay-hint').innerText();
-    assert.match(mobileHint,/局部展开|双击或点/);
+    assert.match(mobileHint,/点击三角|局部展开/);
     await page.locator('#fitTree').click();
     assert.ok(Number(await viewportRect.getAttribute('width'))>1);
     // A focused SVG node supports keyboard lineage traversal.
@@ -200,6 +200,7 @@ async function main(){
     await legacy.waitForSelector('#nodeLayer .node');
     assert.equal(await legacy.locator('#graphStage').getAttribute('data-engine'),'legacy');
     assert.equal(await legacy.locator('#layoutModeSelect').isDisabled(),true);
+    assert.equal(await legacy.locator('#graphStage').getAttribute('data-layout'),'time');
     await legacy.locator('[data-root="mammalia"]').click();
     assert.ok(await legacy.locator('#edgeLayer path').count()>10);
     assert.deepEqual(legacyErrors,[]);
