@@ -68,7 +68,9 @@
     // In full mode the engine handles explicit collapses. In overview mode
     // the engine hides precisely the unexpanded branches identified above.
     return {
-      records:candidates,
+      // The visible subtree has its own root. Keep the canonical record
+      // untouched, and clear only the presentation copy's external parent.
+      records:candidates.map(n=>n.id===rootId?{...n,parent:null}:n),
       collapsedIds:[...collapsed],
       totalAvailable:candidates.length,
       projectedVisibleCount:detail==='overview'?visible.size:null,
