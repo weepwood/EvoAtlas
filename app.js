@@ -54,28 +54,45 @@
   }
   function build() {
     const candidates=descendants(state.root).filter(n=>state.extinct || n.status!=='extinct');
-    const include = new Set([state.root]);
-    candidates.forEach(n=>{
-      if(state.detail==='full'){include.add(n.id);return;}
-      const relativeDepth=path(n.id).findIndex(x=>x.id===state.root);
-      // A world overview should remain readable, not cram every named tip
-      // into a single viewport. Featured tips appear after focusing a clade.
-      if(relativeDepth>=0 && (relativeDepth<=3 || (state.root!=='luca' && relativeDepth<=5 && featured.has(n.id)) || n.id===state.selected)) include.add(n.id);
-    });
-    // Preserve every ancestor of a displayed featured taxon. Otherwise the
-    // overview would imply false direct parent-child evolutionary links.
-    [...include].forEach(id=>{
-      path(id).forEach(n=>{if(inside(n.id,state.root))include.add(n.id);});
-    });
-    if(state.selected && inside(state.selected,state.root)){
-      path(state.selected).forEach(n=>{if(inside(n.id,state.root))include.add(n.id);});
+    const candidateIds=new Set(candidates.map(n=>n.id));
+    const include=new Set([state.root]);
+    if(state.detail==='full'){
+      candidates.forEach(n=>include.add(n.id));
+    }else{
+      // Level-of-detail: 600+ taxa must not flatten into unreadable hairlines.
+      // Traverse evenly across sibling branches, showing broad diversity
+      // instead of exhausting one large family before the others.
+      const budget=window.innerWidth<700?34:58;
+      let layer=[state.root];
+      while(layer.length && include.size<budget){
+        const groups=layer.map(id=>(children.get(id)||[])
+          .filter(childId=>candidateIds.has(childId)));
+        const next=[];
+        const longest=Math.max(0,...groups.map(group=>group.length));
+        for(let column=0;column<longest && include.size<budget;column++){
+          for(const group of groups){
+            const id=group[column];
+            if(!id || include.size>=budget)continue;
+            include.add(id);next.push(id);
+          }
+        }
+        layer=next;
+      }
+      // Preserve the exact ancestor chain of a searched/selected taxon.
+      if(state.selected && candidateIds.has(state.selected)){
+        for(const ancestor of path(state.selected)){
+          if(candidateIds.has(ancestor.id))include.add(ancestor.id);
+          if(ancestor.id===state.root)break;
+        }
+      }
     }
+    state.totalAvailable=candidates.length;
     state.visible=[];state.parents=new Map();
     candidates.forEach(n=>{
       if(!include.has(n.id))return;
-      let p=n.parent;
-      while(p && !include.has(p))p=byId.get(p)?.parent;
-      state.parents.set(n.id,n.id===state.root?null:p||null);
+      let parent=n.parent;
+      while(parent && !include.has(parent))parent=byId.get(parent)?.parent;
+      state.parents.set(n.id,n.id===state.root?null:parent||null);
       state.visible.push(n);
     });
   }
@@ -328,6 +345,10 @@
     build();layout();drawGrid();drawEvents();drawTree();
     $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
+    const hint=$('graphStage').querySelector('.graph-overlay-hint');
+    if(hint)hint.textContent=state.detail==='overview'&&state.visible.length<state.totalAvailable
+      ? '概览 '+state.visible.length+'/'+state.totalAvailable+' · 聚焦支系或搜索更多物种'
+      : '滚轮缩放 · 拖拽移动 · 点击类群查看';
     updateClades();updateHeaderBreadcrumb();
     if(fitNow)requestAnimationFrame(()=>fit());else applyTransform();
   }
