@@ -179,6 +179,18 @@ async function main(){
     assert.equal(await page.locator('#edgeLayer .edge-arm[data-owner="actinopterygii"]').count(),23);
     await page.screenshot({path:'artifacts/evoatlas-actinopterygii-v2.png'});
 
+    // The real 23-way branch must keep a shared stem and align its terminal
+    // labels when presented as a structural cladogram.
+    await page.locator('[data-select="layoutModeSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option')
+      .filter({hasText:'结构树'}).click();
+    assert.equal(await page.locator('#edgeLayer .edge-stem[data-owner="actinopterygii"]').count(),1);
+    const fishTipColumns=await page.locator('#nodeLayer .node.terminal').evaluateAll(nodes=>
+      nodes.map(n=>Number(n.getAttribute('transform').match(/translate\(([-\d.]+) /)?.[1])));
+    assert.equal(new Set(fishTipColumns.map(x=>x.toFixed(3))).size,1,
+      '23 fish terminals should align at one visual reading column');
+    await page.screenshot({path:'artifacts/evoatlas-fanout-structure.png'});
+
     await page.setViewportSize({width:390,height:844});
     await page.waitForTimeout(350);
     await page.locator('#openSidebar').click();
