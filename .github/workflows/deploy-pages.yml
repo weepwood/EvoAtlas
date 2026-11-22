@@ -1,0 +1,71 @@
+name: Deploy EvoAtlas to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Validate and publish static website
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check scripts
+        run: |
+          node --check app.js
+          node --check data/data.js
+          node --check data/curation.js
+          node --check data/research.js
+
+      - name: Validate datasets and UI contracts
+        run: |
+          python3 scripts/validate_data.py
+          python3 scripts/validate_ui.py
+
+      - name: Prepare isolated Pages artifact
+        run: |
+          mkdir -p dist/data
+          cp index.html styles.css app.js dist/
+          cp data/data.js data/curation.js data/research.js dist/data/
+          touch dist/.nojekyll
+          test -s dist/index.html
+          test -s dist/app.js
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
