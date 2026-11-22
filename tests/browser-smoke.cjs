@@ -20,8 +20,18 @@ async function main(){
     await page.waitForSelector('#nodeLayer .node');
     assert.equal(await page.evaluate(()=>window.EVO_TAXA.length),608);
     assert.equal(await page.locator('#graphStage').getAttribute('data-engine'),'v2');
-    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'time');
-    assert.equal(await page.locator('#layoutModeSelect').inputValue(),'time');
+    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'structure');
+    assert.equal(await page.locator('#layoutModeSelect').inputValue(),'structure');
+    assert.equal(await page.locator('#scaleSelect').isDisabled(),true);
+    assert.equal(await page.locator('#eventLayer').locator('*').count(),0);
+    assert.ok(await page.locator('#nodeLayer .collapsed-summary .clade-wedge').count()>0,
+      'overview should show explicit collapsed clade glyphs');
+    const initialTips=await page.locator('#nodeLayer .node.terminal:not(.selected)').evaluateAll(nodes=>
+      nodes.filter(n=>!n.querySelector('.collapsed-summary'))
+        .map(n=>new DOMMatrix(n.getAttribute('transform')).e));
+    assert.ok(new Set(initialTips.map(x=>x.toFixed(3))).size<=1,
+      'structural cladogram should align the real terminal tips');
+    await page.screenshot({path:'artifacts/evoatlas-atlas-structure-default.png'});
     assert.equal(await page.locator('#speciesA option').count(),496);
     assert.equal(await page.locator('.workspace-heading').count(),0);
     const chevron=page.locator('[data-select="scaleSelect"] .custom-select-chevron');
@@ -32,6 +42,12 @@ async function main(){
     await page.locator('[data-root="eukaryota"]').click();
     assert.match(await page.locator('#headerBreadcrumb').innerText(),/真核生物/);
     assert.equal(await page.locator('#headerBreadcrumb [aria-current="location"]').innerText(),'真核生物');
+
+    // Switch to the time interpretation before testing its time-only scale.
+    await page.locator('[data-select="layoutModeSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option')
+      .filter({hasText:'时间树'}).click();
+    assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'time');
 
     // The native select remains the model. Interact only with the new visible menu.
     const timeTrigger=page.locator('[data-select="scaleSelect"] .custom-select-trigger');
@@ -94,6 +110,8 @@ async function main(){
     const cat=page.locator('#nodeLayer .node[data-id="felidae"]');
     assert.ok(await cat.count()>0,'cat family visible in overview');
     assert.equal(await cat.locator('.node-more').count(),1,'folded real branch has visible expand action');
+    assert.equal(await cat.locator('.clade-wedge').count(),1,
+      'folded branch must render the new triangular summary');
     const beforeExpansion=await page.locator('#nodeLayer .node').count();
     await cat.locator('.node-more').dispatchEvent('click');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),1,
