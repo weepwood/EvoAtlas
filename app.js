@@ -95,6 +95,22 @@
       state.parents.set(n.id,n.id===state.root?null:parent||null);
       state.visible.push(n);
     });
+    const total=new Map(),shown=new Map();
+    for(const n of candidates){
+      for(const ancestor of path(n.id)){
+        if(!candidateIds.has(ancestor.id))continue;
+        total.set(ancestor.id,(total.get(ancestor.id)||0)+1);
+        if(ancestor.id===state.root)break;
+      }
+    }
+    for(const n of state.visible){
+      for(const ancestor of path(n.id)){
+        if(!candidateIds.has(ancestor.id))continue;
+        shown.set(ancestor.id,(shown.get(ancestor.id)||0)+1);
+        if(ancestor.id===state.root)break;
+      }
+    }
+    state.hiddenById=new Map(state.visible.map(n=>[n.id,Math.max(0,(total.get(n.id)||1)-(shown.get(n.id)||1))]));
   }
   function xFor(ma){
     const left=65, right=215;
@@ -254,7 +270,7 @@
       const a=state.pos.get(parent),b=state.pos.get(n.id);if(!a||!b)return;
       const middle=a.x+Math.max(12,(b.x-a.x)*.38);
       const d='M '+a.x+' '+a.y+' H '+middle+' V '+b.y+' H '+b.x;
-      edges.append(make('path',{d,class:'edge'+(activePath.has(n.id)&&activePath.has(parent)?' active-path':'')}));
+      edges.append(make('path',{d,'data-child':n.id,class:'edge'+(activePath.has(n.id)&&activePath.has(parent)?' active-path':'')}));
     });
     const labels=chooseLabels();
     state.visible.forEach(n=>{
@@ -267,14 +283,36 @@
       const label=make('text',{class:'node-label',x:meta.dx,y:meta.dy,'text-anchor':meta.side==='right'?'start':'end',
         'dominant-baseline':'middle'});
       label.textContent=n.zh;
+      if(Math.abs(meta.dy)>=16){
+        node.append(make('path',{d:'M 0 0 L '+(meta.dx>0?7:-7)+' '+meta.dy,class:'node-label-guide'}));
+      }
       node.append(label);
+      const hidden=state.hiddenById?.get(n.id)||0;
+      const hasChildren=(children.get(n.id)||[]).length>0;
+      if(state.detail==='overview' && n.id!==state.root && hidden>=3 && hasChildren){
+        const more=make('g',{class:'node-more','data-expand':n.id,role:'button',tabindex:0,
+          'aria-label':'聚焦'+n.zh+'，查看另外 '+hidden+' 个节点'});
+        const text=hidden>99?'99+':'+'+hidden;
+        const w=14+text.length*7.2;
+        more.append(make('rect',{x:9,y:18,width:w,height:18,rx:6}));
+        const countLabel=make('text',{x:9+w/2,y:30,'text-anchor':'middle'});
+        countLabel.textContent=text;more.append(countLabel);
+        more.addEventListener('click',event=>{event.stopPropagation();focusRoot(n.id);});
+        more.addEventListener('keydown',event=>{
+          if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();focusRoot(n.id);}
+        });
+        node.append(more);
+      }
       node.addEventListener('click',e=>{e.stopPropagation();selectNode(n.id);});
-      node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectNode(n.id);}});
-      node.addEventListener('mouseenter',e=>showTip(e,n));
+      node.addEventListener('dblclick',e=>{
+        if(hasChildren){e.preventDefault();e.stopPropagation();focusRoot(n.id);}
+      });
+      node.addEventListener('keydown',e=>navigateNodeKeyboard(e,n.id));
+      node.addEventListener('mouseenter',e=>{highlightLineage(n.id);showTip(e,n);});
       node.addEventListener('mousemove',moveTip);
-      node.addEventListener('mouseleave',hideTip);
-      node.addEventListener('focus',()=>node.classList.add('keyboard-focus'));
-      node.addEventListener('blur',()=>node.classList.remove('keyboard-focus'));
+      node.addEventListener('mouseleave',()=>{highlightLineage(null);hideTip();});
+      node.addEventListener('focus',()=>{node.classList.add('keyboard-focus');highlightLineage(n.id);});
+      node.addEventListener('blur',()=>{node.classList.remove('keyboard-focus');highlightLineage(null);});
       nodes.append(node);
     });
   }
@@ -344,12 +382,12 @@
     box.scrollLeft=box.scrollWidth;
   }
   function render(fitNow=false){
-    build();layout();drawGrid();drawEvents();drawTree();
+    build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
     $('graphStage').dataset.scale=state.scale;
     $('graphEmpty').hidden=state.visible.length>0;
     const hint=$('graphStage').querySelector('.graph-overlay-hint');
     if(hint)hint.textContent=state.detail==='overview'&&state.visible.length<state.totalAvailable
-      ? '概览 '+state.visible.length+'/'+state.totalAvailable+' · 聚焦支系或搜索更多物种'
+      ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
       : '滚轮缩放 · 拖拽移动 · 点击类群查看';
     updateClades();updateHeaderBreadcrumb();
     if(fitNow)requestAnimationFrame(()=>fit());else applyTransform();
