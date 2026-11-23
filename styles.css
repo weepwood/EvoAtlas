@@ -731,3 +731,32 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
     transition:none;
   }
 }
+
+
+/* The reverse disclosure is only visible when the expanded branch is
+   hovered or keyboard focused; its 28×34 target remains comfortably usable. */
+.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
+  fill:var(--surface-alt);stroke:var(--line);
+  stroke-width:.75;opacity:0;
+  transition:opacity .14s ease;
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-chevron{
+  fill:none;stroke:var(--primary);
+  stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round;
+  pointer-events:none;
+}
+.graph-stage[data-engine=v2] .node:hover .clade-collapse-toggle .clade-collapse-hit,
+.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
+  opacity:1;
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible{
+  outline:none;
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
+  stroke:var(--primary);stroke-width:1.3;
+}
+@media(prefers-reduced-motion:reduce){
+  .graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
+    transition:none;
+  }
+}
