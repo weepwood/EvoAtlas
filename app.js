@@ -668,8 +668,8 @@
           const count=make('text',{x:countX,y:0,'dominant-baseline':'middle',
             class:'clade-summary-count'});
           count.textContent=countText;more.append(count);
-          more.append(make('rect',{class:'clade-hit-area',x:6,y:-16,
-            width:hitWidth-6,height:32,rx:6}));
+          more.append(make('rect',{class:'clade-hit-area',x:6,y:-20,
+            width:hitWidth-6,height:40,rx:6}));
         }else if(state.engine==='v2'&&expanded){
           // Once expanded, the same branch gets a subtle reverse disclosure
           // beside its junction, not another chip below the label.
