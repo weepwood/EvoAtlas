@@ -657,8 +657,8 @@
           const hitWidth=Math.max(130,countX+measuredTextWidth(countText,'450 11px system-ui, sans-serif')+7);
           more.setAttribute('aria-expanded','false');
           more.setAttribute('aria-description','点击展开当前支系，双击节点名称进入类群');
-          more.append(make('rect',{class:'clade-row-bg',x:6,y:-16,
-            width:hitWidth-6,height:32,rx:6}));
+          more.append(make('rect',{class:'clade-row-bg',x:6,y:-20,
+            width:hitWidth-6,height:40,rx:6}));
           // 12 × 12 is intentionally much smaller than the former ~45 × 22.
           more.append(make('path',{class:'clade-wedge',
             d:'M 14 -6 L 26 0 L 14 6 Z'}));
@@ -1037,9 +1037,9 @@
     if(state.engine==='v2'){
       // Reveal the selected true lineage, even when ancestors were auto-folded.
       for(const ancestor of path(id)){
-        // Selection pins its ancestor path temporarily; do not persist every
-        // ancestor as an explicit expansion after the selection changes.
-        state.foldedIds.delete(ancestor.id);
+        // Reveal a searched descendant's parents, but simply selecting a
+        // collapsed clade must not silently expand its own descendants.
+        if(ancestor.id!==id)state.foldedIds.delete(ancestor.id);
         if(ancestor.id===state.root)break;
       }
     }
