@@ -143,6 +143,7 @@ async function main(){
     assert.ok(await page.locator('#nodeLayer .node').count()>beforeExpansion);
     assert.equal(await page.locator('#headerBreadcrumb [aria-current="location"]').innerText(),
       await page.evaluate(()=>window.EVO_TAXA.find(t=>t.id==='mammalia').zh));
+    await page.waitForTimeout(240);
     await page.screenshot({path:'artifacts/evoatlas-clade-expanded.png'});
     const collapseControl=page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle');
     await collapseControl.focus();
