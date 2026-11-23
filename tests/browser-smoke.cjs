@@ -24,13 +24,16 @@ async function main(){
     assert.equal(await page.locator('#layoutModeSelect').inputValue(),'structure');
     assert.equal(await page.locator('#scaleSelect').isDisabled(),true);
     assert.equal(await page.locator('#eventLayer').locator('*').count(),0);
-    assert.ok(await page.locator('#nodeLayer .collapsed-summary .clade-wedge').count()>0,
-      'overview should show explicit collapsed clade glyphs');
-    const initialTips=await page.locator('#nodeLayer .node.terminal:not(.selected)').evaluateAll(nodes=>
-      nodes.filter(n=>!n.querySelector('.collapsed-summary'))
-        .map(n=>Number(n.getAttribute('transform').match(/translate\(([-\d.]+) /)?.[1])));
-    assert.ok(new Set(initialTips.map(x=>x.toFixed(3))).size<=1,
-      'structural cladogram should align the real terminal tips');
+    assert.equal(await page.locator('#graphStage').getAttribute('data-detail'),'focus');
+    const focusedCount=await page.locator('#nodeLayer .node').count();
+    assert.ok(focusedCount>=4 && focusedCount<=12,
+      'default explorer should show only the root and a few major subclades');
+    assert.equal(await page.locator('#nodeLayer .collapsed-summary').count(),0,
+      'focused mode does not show wedge glyphs');
+    assert.equal(await page.locator('#graphMinimap').isVisible(),false,
+      'overview minimap must not cover the reading view');
+    assert.equal(await page.locator('#axisOverlay').isVisible(),false,
+      'cladogram focus is not a time axis');
     await page.screenshot({path:'artifacts/evoatlas-atlas-structure-default.png'});
     assert.equal(await page.locator('#speciesA option').count(),496);
     assert.equal(await page.locator('.workspace-heading').count(),0);
@@ -194,6 +197,21 @@ async function main(){
     assert.ok(fishTipColumns[0]-fishRootX>=380,
       'a shallow 23-way branch should use the canvas width, not crowd next to its trunk');
     await page.screenshot({path:'artifacts/evoatlas-fanout-structure.png'});
+
+    // A dense real polytomy starts as a readable subset, with a truthful
+    // "show the remaining siblings" action. No fake ancestor appears.
+    await page.locator('[data-select="detailSelect"] .custom-select-trigger').click();
+    await page.locator('.custom-select-menu:not([hidden]) .custom-select-option')
+      .filter({hasText:'逐级浏览'}).click();
+    assert.equal(await page.locator('#graphStage').getAttribute('data-detail'),'focus');
+    assert.equal(await page.locator('#nodeLayer .node').count(),8);
+    assert.match(await page.locator('#focusStatus').innerText(),/7 \/ 23/);
+    assert.match(await page.locator('#showMoreChildren').innerText(),/16/);
+    await page.screenshot({path:'artifacts/evoatlas-fanout-focused.png'});
+    await page.locator('#showMoreChildren').click();
+    assert.equal(await page.locator('#nodeLayer .node').count(),24);
+    await page.locator('#showMoreChildren').click();
+    assert.equal(await page.locator('#nodeLayer .node').count(),8);
 
     await page.setViewportSize({width:390,height:844});
     await page.waitForTimeout(350);
