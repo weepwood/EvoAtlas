@@ -16,7 +16,7 @@
   function project(records,options={}){
     const {rootId,detail='overview',budget=58,
       selectedId=null,expandedIds=[],foldedIds=[]}=options;
-    if(!['overview','full'].includes(detail))throw new Error('Invalid detail mode: '+detail);
+    if(!['focus','overview','full'].includes(detail))throw new Error('Invalid detail mode: '+detail);
     const index=new Map(records.map(node=>[node.id,node]));
     if(!index.has(rootId))throw new Error('Unknown root: '+rootId);
     const childIndex=new Map(records.map(n=>[n.id,[]]));
@@ -45,6 +45,78 @@
         visited.add(current);forced.add(current);
         current=index.get(current)?.parent;
       }
+    }
+    if(detail==='focus'){
+      // An intentionally sparse, inspectable two-generation window. Hidden
+      // siblings are never reparented or modeled as fictional taxon nodes.
+      const limit=Math.max(4,Math.floor(options.focusLimit||12));
+      const mobile=options.mobile===true;
+      const depthLimit=mobile?1:2;
+      const rootCap=mobile?5:7;
+      const visible=new Set([rootId]),folded=manuallyFolded;
+      const rootChildren=kids.get(rootId)||[];
+      let first=rootChildren.slice(0,expanded.has(rootId)?rootChildren.length:rootCap);
+      // A searched/selected descendant may fall outside the default first
+      // few siblings. Make the real ancestor chain discoverable.
+      const selectedChain=new Set();
+      for(const id of forced)if(id!==rootId)selectedChain.add(id);
+      const pinnedFirst=rootChildren.find(id=>selectedChain.has(id));
+      if(pinnedFirst&&!first.includes(pinnedFirst)){
+        if(first.length>=rootCap&&!expanded.has(rootId))first.pop();
+        first.push(pinnedFirst);
+      }
+      if(!folded.has(rootId))for(const id of first)visible.add(id);
+      const queue=first.map(id=>({id,depth:1})),counts=new Map();
+      let guard=0;
+      while(queue.length&&guard++<candidates.length){
+        const {id,depth}=queue.shift();
+        if(!visible.has(id)||folded.has(id))continue;
+        const all=kids.get(id)||[];
+        if(!all.length)continue;
+        const explicit=expanded.has(id);
+        if(depth>=depthLimit&&!explicit&&!selectedChain.has(id))continue;
+        const cap=explicit?all.length:Math.max(0,Math.min(2,limit-visible.size));
+        let next=all.slice(0,cap);
+        const pinned=all.find(child=>selectedChain.has(child));
+        if(pinned&&!next.includes(pinned)){
+          if(cap&&!explicit)next[next.length-1]=pinned;
+          else next.push(pinned);
+        }
+        for(const child of next){
+          if(!visible.has(child)){
+            visible.add(child);
+            queue.push({id:child,depth:depth+1});
+          }
+        }
+        counts.set(id,all.length);
+      }
+      const hiddenDescendants=new Map();
+      const countAll=new Map();
+      const countFull=id=>{
+        if(countAll.has(id))return countAll.get(id);
+        const count=(kids.get(id)||[]).reduce((sum,child)=>sum+1+countFull(child),0);
+        countAll.set(id,count);return count;
+      };
+      for(const node of candidates)countFull(node.id);
+      for(const id of visible)hiddenDescendants.set(id,countAll.get(id)||0);
+      for(const id of visible){
+        let cursor=index.get(id)?.parent;
+        while(cursor&&visible.has(cursor)){
+          hiddenDescendants.set(cursor,Math.max(0,hiddenDescendants.get(cursor)-1));
+          cursor=index.get(cursor)?.parent;
+        }
+      }
+      const records=candidates.filter(n=>visible.has(n.id))
+        .map(n=>n.id===rootId?{...n,parent:null}:n);
+      return {
+        records,collapsedIds:[],totalAvailable:candidates.length,
+        projectedVisibleCount:visible.size,
+        hiddenDescendants:Object.fromEntries(hiddenDescendants),
+        remainingDirect:Math.max(0,rootChildren.length-first.length),
+        directCount:rootChildren.length,
+        directShown:first.length,
+        rootId
+      };
     }
     const visible=new Set([rootId]),collapsed=new Set();
     if(detail==='overview'){
