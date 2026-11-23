@@ -774,16 +774,62 @@
       label.textContent=viewLabels[state.view]||'生命之树';box.append(label);return;
     }
     const ancestors=path(state.root).reverse();
-    ancestors.forEach((taxon,i)=>{
-      if(i){
-        const slash=document.createElement('span');slash.className='breadcrumb-separator';
-        slash.setAttribute('aria-hidden','true');slash.textContent='/';box.append(slash);
+    const menu=$('breadcrumbMenu');
+    menu.hidden=true;
+    const makeSlash=()=>{
+      const slash=document.createElement('span');
+      slash.className='breadcrumb-separator';
+      slash.setAttribute('aria-hidden','true');
+      slash.textContent='/';
+      return slash;
+    };
+    const makeCrumb=(taxon,current)=>{
+      const button=document.createElement('button');
+      button.type='button';button.textContent=taxon.zh;
+      button.dataset.focus=taxon.id;
+      if(current)button.setAttribute('aria-current','location');
+      button.addEventListener('click',()=>focusRoot(taxon.id));
+      return button;
+    };
+    const abbreviated=state.engine==='v2'&&state.detail==='focus'&&ancestors.length>4;
+    if(!abbreviated){
+      ancestors.forEach((taxon,i)=>{
+        if(i)box.append(makeSlash());
+        box.append(makeCrumb(taxon,i===ancestors.length-1));
+      });
+    }else{
+      box.append(makeCrumb(ancestors[0],false),makeSlash());
+      const middle=document.createElement('button');
+      middle.type='button';middle.textContent='…';
+      middle.className='breadcrumb-overflow';
+      middle.setAttribute('aria-label','查看完整祖先路径');
+      middle.setAttribute('aria-haspopup','menu');
+      middle.setAttribute('aria-expanded','false');
+      middle.addEventListener('click',e=>{
+        e.stopPropagation();
+        const shouldOpen=menu.hidden;
+        menu.replaceChildren();
+        if(shouldOpen){
+          for(const taxon of ancestors.slice(1,-2)){
+            const option=document.createElement('button');
+            option.type='button';option.role='menuitem';
+            option.textContent=taxon.zh;
+            option.addEventListener('click',()=>{menu.hidden=true;focusRoot(taxon.id);});
+            menu.append(option);
+          }
+          const rect=middle.getBoundingClientRect();
+          menu.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-240))+'px';
+          menu.style.top=(rect.bottom+9)+'px';
+        }
+        menu.hidden=!shouldOpen;
+        middle.setAttribute('aria-expanded',String(shouldOpen));
+      });
+      box.append(middle);
+      for(const [i,taxon] of ancestors.slice(-2).entries()){
+        box.append(makeSlash());
+        box.append(makeCrumb(taxon,i===1));
       }
-      const button=document.createElement('button');button.type='button';
-      button.textContent=taxon.zh;button.dataset.focus=taxon.id;
-      if(i===ancestors.length-1)button.setAttribute('aria-current','location');
-      button.addEventListener('click',()=>focusRoot(taxon.id));box.append(button);
-    });
+    }
     box.scrollLeft=box.scrollWidth;
   }
   function render(fitNow=false){
@@ -1085,6 +1131,14 @@
     $('openSidebar').addEventListener('click',()=>{$('sidebar').classList.add('open');$('mobileScrim').hidden=false;});
     $('mobileScrim').addEventListener('click',closeSidebar);
     $('closeInspector').addEventListener('click',closeInspector);
+    document.addEventListener('pointerdown',event=>{
+      const menu=$('breadcrumbMenu');
+      if(!menu.hidden&&!menu.contains(event.target)&&
+        !event.target.closest('.breadcrumb-overflow'))menu.hidden=true;
+    });
+    document.addEventListener('keydown',event=>{
+      if(event.key==='Escape')$('breadcrumbMenu').hidden=true;
+    });
     $('suggestNode').addEventListener('click',()=>selectNode('sapiens'));
     $('randomSpecies').addEventListener('click',()=>{
       const species=taxa.filter(n=>n.rank==='种');
