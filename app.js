@@ -1015,6 +1015,7 @@
   function closeInspector(){$('detailPanel').classList.remove('open');}
   function openInspector(){if(window.matchMedia('(max-width: 1080px)').matches)$('detailPanel').classList.add('open');}
   let pendingTip=0;
+  let pendingTipPoint=null;
   function hideTip(){
     if(pendingTip)clearTimeout(pendingTip);
     pendingTip=0;
@@ -1022,17 +1023,18 @@
   }
   function scheduleTip(e,n){
     hideTip();
-    const {clientX,clientY}=e;
+    pendingTipPoint={clientX:e.clientX,clientY:e.clientY};
     pendingTip=setTimeout(()=>{
       pendingTip=0;
       const el=[...$('nodeLayer').querySelectorAll(':scope > .node')]
         .find(node=>node.dataset.id===n.id);
       if(el?.matches(':hover') && !el.querySelector('.collapsed-summary:hover')){
-        showTip({clientX,clientY},n);
+        showTip(pendingTipPoint,n);
       }
     },420);
   }
   function moveTip(e){
+    if(pendingTip)pendingTipPoint={clientX:e.clientX,clientY:e.clientY};
     const tip=$('tooltip'),offset=14;
     tip.style.left=Math.min(window.innerWidth-250,e.clientX+offset)+'px';
     tip.style.top=Math.max(8,Math.min(window.innerHeight-85,e.clientY+offset))+'px';
