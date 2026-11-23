@@ -523,3 +523,107 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
   opacity:.85;
 }
 .graph-stage[data-engine=v2] #minimapNodes circle.mini-node{opacity:.9}
+
+
+/* Focus reading: low-information-density view, deliberately independent of
+   the full phylogenetic atlas. The complete topology remains available via
+   the "结构概览 / 全部节点" options. */
+#treeView[data-detail=focus] .graph-minimap,
+#treeView[data-detail=focus] .axis-overlay,
+#treeView[data-detail=focus] .graph-overlay-hint,
+#treeView[data-detail=focus] .legend-inline,
+#treeView[data-detail=focus] .viewer-caveat{
+  display:none!important;
+}
+#treeView[data-detail=focus] .graph-stage{
+  background:var(--canvas);
+  background-image:none;
+}
+#treeView[data-detail=focus] #gridLayer,
+#treeView[data-detail=focus] #eventLayer{
+  display:none;
+}
+#treeView[data-detail=focus] .viewer-toolbar{
+  border-bottom:1px solid var(--line);
+  background:var(--canvas);
+}
+#treeView[data-detail=focus] .viewer-footer{
+  min-height:48px;
+  padding:9px 16px;
+  background:var(--canvas);
+  border-top:1px solid var(--line);
+}
+.focus-commands{
+  width:100%;
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;color:var(--muted);font-size:12px;
+}
+.focus-commands[hidden],.focus-more-button[hidden]{display:none!important}
+.focus-more-button{
+  border:0;background:transparent;color:var(--primary);
+  padding:6px 2px;font-weight:650;font-size:12px;
+  text-align:right;white-space:nowrap;
+}
+.focus-more-button:hover{text-decoration:underline}
+.focus-more-button:focus-visible{outline:2px solid var(--primary);outline-offset:3px;border-radius:3px}
+#treeView[data-detail=focus] #edgeLayer .edge{
+  stroke:var(--ancestor);stroke-width:1.45px;opacity:.55;
+  transition:opacity .12s,stroke .12s;
+}
+#treeView[data-detail=focus] #edgeLayer .edge.active-path,
+#treeView[data-detail=focus] #edgeLayer .edge.hover-path{
+  stroke:var(--primary);opacity:1;stroke-width:2px;
+}
+#treeView[data-detail=focus] .node-core{
+  r:4px;fill:var(--primary);stroke:var(--canvas);
+}
+#treeView[data-detail=focus] .node-label{
+  font-size:16px;
+  font-weight:590;
+  fill:var(--text);
+  stroke:var(--canvas);stroke-width:3px;
+}
+#treeView[data-detail=focus] .node.internal .node-label{
+  font-size:15px;
+  font-weight:620;
+  fill:var(--text);
+}
+#treeView[data-detail=focus] .node[data-id=luca] .node-label{
+  font-size:16px;
+}
+#treeView[data-detail=focus] .focus-node-meta{
+  fill:var(--muted);font-size:11px;font-weight:400;
+  stroke:var(--canvas);stroke-width:2.5px;
+  paint-order:stroke;pointer-events:none;
+}
+#treeView[data-detail=focus] .node:hover .node-label,
+#treeView[data-detail=focus] .node:focus-visible .node-label,
+#treeView[data-detail=focus] .node.selected .node-label{
+  fill:var(--primary);
+}
+#treeView[data-detail=focus] .node-more{display:none}
+#treeView[data-detail=focus] .graph-stage[data-density=far] .node-label,
+#treeView[data-detail=focus] .graph-stage[data-density=medium] .node-label{
+  opacity:1!important;
+  pointer-events:none;
+}
+#treeView[data-detail=focus] .inspector-help{display:none}
+.inspector-empty{
+  align-items:flex-start;text-align:left;
+  padding:44px 23px;
+}
+.inspector-empty h2{font-size:17px;letter-spacing:-.015em;margin:0 0 11px}
+.inspector-empty p{font-size:12px;max-width:245px;line-height:1.8}
+.inspector-empty .outline-button{margin-top:16px}
+.clade-list{
+  max-height:290px;overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent;
+}
+@media(max-width:780px){
+  #treeView[data-detail=focus] .viewer-footer{padding:7px 10px}
+  #treeView[data-detail=focus] .node-label{font-size:17px}
+  #treeView[data-detail=focus] .node.internal .node-label{font-size:16px}
+  #treeView[data-detail=focus] .focus-node-meta{font-size:11.5px}
+  .focus-commands{font-size:11px}
+}
