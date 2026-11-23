@@ -161,6 +161,14 @@ async function main(){
       'reduced motion should not create transient animation ghosts');
     await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').dispatchEvent('click');
     await page.emulateMedia({reducedMotion:'no-preference'});
+    // Interrupt an in-flight open transition by immediately closing again.
+    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-hit-area').dispatchEvent('click');
+    await page.waitForTimeout(55);
+    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').dispatchEvent('click');
+    await page.waitForTimeout(260);
+    assert.equal(await page.locator('.branch-motion-ghost').count(),0,
+      'rapid open-close must cancel prior animation without leaving ghosts');
+    assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0);
     const selectedBefore=await page.locator('#viewport').getAttribute('transform');
     await page.locator('#graphMinimap').click({position:{x:124,y:55}});
     const selectedAfter=await page.locator('#viewport').getAttribute('transform');
