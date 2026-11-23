@@ -34,6 +34,10 @@ async function main(){
       'overview minimap must not cover the reading view');
     assert.equal(await page.locator('#axisOverlay').isVisible(),false,
       'cladogram focus is not a time axis');
+    const focusRootLabelY=Number(await page.locator('#nodeLayer .node[data-id="luca"] .node-label')
+      .getAttribute('y'));
+    assert.ok(focusRootLabelY<=-20,
+      'focus root label must sit above its branch line, never on top of it');
     await page.screenshot({path:'artifacts/evoatlas-atlas-structure-default.png'});
     assert.equal(await page.locator('#speciesA option').count(),496);
     assert.equal(await page.locator('.workspace-heading').count(),0);
