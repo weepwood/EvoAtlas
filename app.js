@@ -476,8 +476,8 @@
       if(!p||!m)continue;
       const collapsed=Boolean(m.collapsed);
       const terminal=m.childIds.length===0&&!collapsed;
-      const text=collapsed?n.zh+' · '+m.hiddenDescendants+' 个后代':n.zh;
-      const dx=collapsed?56:14;
+      const text=collapsed?n.zh+'  '+m.hiddenDescendants+' 个后代':n.zh;
+      const dx=collapsed?38:14;
       const dy=collapsed||terminal?0:-17;
       const font=n.id===state.root?'650 16px system-ui, sans-serif':
         collapsed?'600 14px system-ui, sans-serif':'500 15px system-ui, sans-serif';
@@ -485,7 +485,7 @@
       const rect={left:p.x+dx,right:p.x+dx+width,
         top:p.y+dy-9,bottom:p.y+dy+10};
       const collides=occupied.some(other=>overlaps(rect,other));
-      const hidden=collides&&n.id!==state.selected&&n.id!==state.root;
+      const hidden=!collapsed&&collides&&n.id!==state.selected&&n.id!==state.root;
       if(!hidden)occupied.push(rect);
       labels.set(n.id,{dx,dy,side:'right',leaf:terminal,
         collapsed,hidden,rect});
@@ -536,18 +536,27 @@
           'data-expand':n.id,role:'button',tabindex:0,
           'aria-label':expanded?'收起'+n.zh+'支系':'展开'+n.zh+'，查看 '+hidden+' 个后代'});
         if(state.engine==='v2'&&layoutNode.collapsed){
-          // iTOL-inspired folded clade: a summary *glyph*, not an invented
-          // taxonomic node. Width is decorative; its tip is not an age.
-          const length=35+Math.min(13,Math.log2(hidden+1)*2);
-          const half=9+Math.min(3,Math.log2(hidden+1));
+          // A small disclosure marker is an *interface affordance*, not a
+          // phylogenetic split. The entire row remains keyboard/touch usable.
+          const nameX=37,countText=hidden+' 个后代';
+          const nameWidth=measuredTextWidth(n.zh,'600 13px system-ui, sans-serif');
+          const countX=nameX+nameWidth+11;
+          const hitWidth=Math.max(130,countX+measuredTextWidth(countText,'450 11px system-ui, sans-serif')+7);
+          more.setAttribute('aria-expanded','false');
+          more.setAttribute('aria-description','点击展开当前支系，双击节点名称进入类群');
+          more.append(make('rect',{class:'clade-row-bg',x:6,y:-16,
+            width:hitWidth-6,height:32,rx:6}));
+          // 12 × 12 is intentionally much smaller than the former ~45 × 22.
           more.append(make('path',{class:'clade-wedge',
-            d:'M 10 '+(-half)+' L '+(10+length)+' 0 L 10 '+half+' Z'}));
-          const caption=make('text',{x:10+length+10,y:4,
-            class:'clade-summary-caption'+(meta.hidden?' label-deemphasized':'')});
-          caption.textContent=n.zh+' · '+hidden+' 个后代';
-          more.append(caption);
-          more.append(make('rect',{class:'clade-hit-area',x:7,y:-18,
-            width:length+17+measuredTextWidth(caption.textContent),height:36,rx:5}));
+            d:'M 14 -6 L 26 0 L 14 6 Z'}));
+          const name=make('text',{x:nameX,y:0,'dominant-baseline':'middle',
+            class:'clade-summary-name'});
+          name.textContent=n.zh;more.append(name);
+          const count=make('text',{x:countX,y:0,'dominant-baseline':'middle',
+            class:'clade-summary-count'});
+          count.textContent=countText;more.append(count);
+          more.append(make('rect',{class:'clade-hit-area',x:6,y:-16,
+            width:hitWidth-6,height:32,rx:6}));
         }else{
           const glyph=expanded?'−':hidden>99?'99+':'+'+hidden;
           const width=14+glyph.length*7.2;
@@ -555,8 +564,11 @@
           const count=make('text',{x:9+width/2,y:30,'text-anchor':'middle'});
           count.textContent=glyph;more.append(count);
         }
+        if(state.engine==='v2')more.setAttribute('aria-expanded',String(expanded));
         const action=()=>state.engine==='v2'?toggleBranch(n.id):focusRoot(n.id);
-        more.addEventListener('click',event=>{event.stopPropagation();action();});
+        more.addEventListener('click',event=>{
+          event.preventDefault();event.stopPropagation();action();
+        });
         more.addEventListener('keydown',event=>{
           if(event.key==='Enter'||event.key===' '){
             event.preventDefault();event.stopPropagation();action();
@@ -580,8 +592,14 @@
         }
       });
       node.addEventListener('keydown',e=>navigateNodeKeyboard(e,n.id));
-      node.addEventListener('mouseenter',e=>{highlightLineage(n.id);showTip(e,n);});
-      node.addEventListener('mousemove',moveTip);
+      node.addEventListener('mouseenter',e=>{
+        highlightLineage(n.id);
+        if(!e.target.closest('.collapsed-summary'))showTip(e,n);
+      });
+      node.addEventListener('mousemove',e=>{
+        if(e.target.closest('.collapsed-summary'))hideTip();
+        else moveTip(e);
+      });
       node.addEventListener('mouseleave',()=>{highlightLineage(null);hideTip();});
       node.addEventListener('focus',()=>{node.classList.add('keyboard-focus');highlightLineage(n.id);});
       node.addEventListener('blur',()=>{node.classList.remove('keyboard-focus');highlightLineage(null);});
