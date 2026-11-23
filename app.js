@@ -670,6 +670,14 @@
           count.textContent=countText;more.append(count);
           more.append(make('rect',{class:'clade-hit-area',x:6,y:-16,
             width:hitWidth-6,height:32,rx:6}));
+        }else if(state.engine==='v2'&&expanded){
+          // Once expanded, the same branch gets a subtle reverse disclosure
+          // beside its junction, not another chip below the label.
+          more.classList.add('clade-collapse-toggle');
+          more.append(make('rect',{class:'clade-collapse-hit',
+            x:-30,y:-17,width:28,height:34,rx:6}));
+          more.append(make('path',{class:'clade-collapse-chevron',
+            d:'M -23 -2 L -16 5 L -9 -2'}));
         }else{
           const glyph=expanded?'−':hidden>99?'99+':'+'+hidden;
           const width=14+glyph.length*7.2;
