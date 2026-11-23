@@ -671,13 +671,32 @@
           more.append(make('rect',{class:'clade-hit-area',x:6,y:-20,
             width:hitWidth-6,height:40,rx:6}));
         }else if(state.engine==='v2'&&expanded){
-          // Once expanded, the same branch gets a subtle reverse disclosure
-          // beside its junction, not another chip below the label.
+          // The stem/node junction is reserved for phylogenetic geometry:
+          // place the disclosure *after the taxon label*, never over the
+          // vertical stem or selected-node halo.
           more.classList.add('clade-collapse-toggle');
+          more.setAttribute('aria-description','收起当前分支，不改变选中的类群');
+          const nameWidth=measuredTextWidth(n.zh,'600 15px system-ui, sans-serif');
+          const controlWidth=57,controlHeight=30;
+          const labelEnd=meta.dx+nameWidth;
+          let controlX=labelEnd+11;
+          let controlY=meta.dy-controlHeight/2;
+          // Long names close to the canvas edge use a second row *above*
+          // the label, away from the node's horizontal branch at y=0.
+          if(controlX+controlWidth>state.width-18){
+            controlX=meta.dx;
+            controlY=meta.dy-controlHeight-16;
+          }
           more.append(make('rect',{class:'clade-collapse-hit',
-            x:-30,y:-17,width:28,height:34,rx:6}));
+            x:controlX,y:controlY,width:controlWidth,height:controlHeight,rx:7}));
+          const caption=make('text',{class:'clade-collapse-caption',
+            x:controlX+11,y:controlY+controlHeight/2,
+            'dominant-baseline':'middle'});
+          caption.textContent='收起';
+          more.append(caption);
           more.append(make('path',{class:'clade-collapse-chevron',
-            d:'M -23 -2 L -16 5 L -9 -2'}));
+            d:'M '+(controlX+41)+' '+(controlY+12)+
+              ' l4 4 4 -4'}));
         }else{
           const glyph=expanded?'−':hidden>99?'99+':'+'+hidden;
           const width=14+glyph.length*7.2;
@@ -688,6 +707,10 @@
         if(state.engine==='v2')more.setAttribute('aria-expanded',String(expanded));
         const action=(keyboard=false)=>state.engine==='v2'
           ?toggleBranch(n.id,{restoreFocus:keyboard}):focusRoot(n.id);
+        more.addEventListener('pointerdown',event=>{
+          // A tap on a disclosure is a button action, not a canvas pan.
+          event.stopPropagation();
+        });
         more.addEventListener('click',event=>{
           event.preventDefault();event.stopPropagation();action(false);
         });
@@ -716,10 +739,10 @@
       node.addEventListener('keydown',e=>navigateNodeKeyboard(e,n.id));
       node.addEventListener('mouseenter',e=>{
         highlightLineage(n.id);
-        if(!e.target.closest('.collapsed-summary'))scheduleTip(e,n);
+        if(!e.target.closest('.collapsed-summary, .clade-collapse-toggle'))scheduleTip(e,n);
       });
       node.addEventListener('mousemove',e=>{
-        if(e.target.closest('.collapsed-summary'))hideTip();
+        if(e.target.closest('.collapsed-summary, .clade-collapse-toggle'))hideTip();
         else moveTip(e);
       });
       node.addEventListener('mouseleave',()=>{highlightLineage(null);hideTip();});
@@ -1028,7 +1051,8 @@
       pendingTip=0;
       const el=[...$('nodeLayer').querySelectorAll(':scope > .node')]
         .find(node=>node.dataset.id===n.id);
-      if(el?.matches(':hover') && !el.querySelector('.collapsed-summary:hover')){
+      if(el?.matches(':hover') &&
+         !el.querySelector('.collapsed-summary:hover, .clade-collapse-toggle:hover')){
         showTip(pendingTipPoint,n);
       }
     },420);
