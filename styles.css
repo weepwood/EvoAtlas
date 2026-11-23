@@ -733,93 +733,42 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
 }
 
 
-/* The reverse disclosure is only visible when the expanded branch is
-   hovered or keyboard focused; its 28×34 target remains comfortably usable. */
-.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
-  fill:var(--surface-alt);stroke:var(--line);
-  stroke-width:.75;opacity:0;
-  transition:opacity .14s ease;
-}
-.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-chevron{
-  fill:none;stroke:var(--primary);
-  stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round;
-  pointer-events:none;
-}
-.graph-stage[data-engine=v2] .node:hover .clade-collapse-toggle .clade-collapse-hit,
-.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
-  opacity:1;
-}
-.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible{
-  outline:none;
-}
-.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
-  stroke:var(--primary);stroke-width:1.3;
-}
-@media(prefers-reduced-motion:reduce){
-  .graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
-    transition:none;
-  }
-}
 
-
-/* 2026-11: The expanded-clade action lives beside its text label.
-   Keep the taxon node, its halo and the vertical/horizontal tree connectors
-   clear of clickable controls. */
-.graph-stage[data-engine=v2] .clade-collapse-toggle{
+/* An expanded branch is controlled from the fixed footer, not from its
+   geometric node/stem intersection or a neighboring taxon label. */
+.branch-action[hidden]{display:none!important}
+.branch-action{
+  display:flex;align-items:center;gap:11px;min-width:0;
+  color:var(--muted);font-size:12px;
+}
+.branch-action-caption{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.branch-action-caption strong{
+  color:var(--text);font-weight:620;margin-left:4px;
+}
+.branch-action button{
+  flex:none;min-height:30px;padding:5px 11px;
+  border:1px solid var(--line);border-radius:7px;
+  background:var(--surface);color:var(--text);
+  font-size:12px;font-weight:600;
   cursor:pointer;
+  transition:background .14s ease,border-color .14s ease;
 }
-.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
-  fill:var(--surface);
-  stroke:var(--line);
-  stroke-width:1;
-  opacity:.96;
-  transition:fill .14s ease,stroke .14s ease;
+.branch-action button:hover{
+  background:var(--surface-alt);border-color:var(--primary);
 }
-.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-caption{
-  fill:var(--muted);
-  font-size:11px;
-  font-weight:570;
-  paint-order:stroke;
-  stroke:none;
-  pointer-events:none;
+.branch-action button:focus-visible{
+  outline:2px solid var(--primary);outline-offset:2px;
 }
-.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-chevron{
-  stroke:var(--muted);
-  stroke-width:1.25;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-  fill:none;
-  pointer-events:none;
-}
-.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-hit{
-  fill:var(--surface-alt);
-  stroke:var(--primary);
-}
-.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-caption{
-  fill:var(--primary);
-}
-.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-chevron{
-  stroke:var(--primary);
-}
-.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
-  stroke-width:1.5;
-}
-@media(hover:none),(pointer:coarse){
-  .graph-stage[data-engine=v2] .node-more.expanded.clade-collapse-toggle{
-    opacity:1;
-    pointer-events:auto;
+.viewer-footer.has-branch-action .viewer-caveat{display:none}
+@media(max-width:780px){
+  .viewer-footer.has-branch-action .legend-inline{display:none}
+  .viewer-footer.has-branch-action .branch-action{
+    flex:1;width:100%;justify-content:space-between;
   }
+  .branch-action button{min-height:36px}
 }
 @media(prefers-reduced-motion:reduce){
-  .graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
-    transition:none;
-  }
-}
-
-
-/* After an expand, preserve the action long enough to be usable even when
-   the pointer travels across the (non-interactive) species name. */
-.graph-stage[data-engine=v2] .node.disclosure-recent .node-more.expanded.clade-collapse-toggle{
-  opacity:1;
-  pointer-events:auto;
+  .branch-action button{transition:none}
 }
