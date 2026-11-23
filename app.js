@@ -614,7 +614,7 @@
     state.visible.forEach(n=>{
       const point=state.pos.get(n.id),meta=labels.get(n.id);
       if(!point||!meta)return;
-      const node=make('g',{class:'node '+n.status+(meta.leaf?' terminal':' internal')+(n.id===state.selected?' selected':'')+(n.id===state.lastDisclosureId?' disclosure-recent':''),
+      const node=make('g',{class:'node '+n.status+(meta.leaf?' terminal':' internal')+(n.id===state.selected?' selected':''),
         transform:'translate('+point.x+' '+point.y+')','data-id':n.id,tabindex:0,role:'button',
         'aria-label':n.zh+'，'+n.rank+'，'+nodeAge(n)});
       node.append(make('circle',{class:'node-halo',r:12}),make('circle',{class:'node-core',r:n.id===state.root?6:4.8}));
@@ -642,7 +642,7 @@
       const hasChildren=(children.get(n.id)||[]).length>0;
       const layoutNode=state.engine==='v2'?state.layoutMeta.get(n.id):null;
       const canToggle=state.engine==='v2'
-        ? state.detail!=='focus'&&Boolean(layoutNode&&(layoutNode.collapsed||layoutNode.childIds.length))
+        ? state.detail!=='focus'&&Boolean(layoutNode?.collapsed)
         : state.detail==='overview'&&hidden>=3&&hasChildren;
       if(n.id!==state.root && canToggle){
         const expanded=state.engine==='v2' && !layoutNode.collapsed;
@@ -672,33 +672,6 @@
           count.textContent=countText;more.append(count);
           more.append(make('rect',{class:'clade-hit-area',x:6,y:-20,
             width:hitWidth-6,height:40,rx:6}));
-        }else if(state.engine==='v2'&&expanded){
-          // The stem/node junction is reserved for phylogenetic geometry:
-          // place the disclosure *after the taxon label*, never over the
-          // vertical stem or selected-node halo.
-          more.classList.add('clade-collapse-toggle');
-          more.setAttribute('aria-description','收起当前分支，不改变选中的类群');
-          const nameWidth=measuredTextWidth(n.zh,'600 15px system-ui, sans-serif');
-          const controlWidth=57,controlHeight=30;
-          const labelEnd=meta.dx+nameWidth;
-          let controlX=labelEnd+11;
-          let controlY=meta.dy-controlHeight/2;
-          // Long names close to the canvas edge use a second row *above*
-          // the label, away from the node's horizontal branch at y=0.
-          if(controlX+controlWidth>state.width-18){
-            controlX=meta.dx;
-            controlY=meta.dy-controlHeight-16;
-          }
-          more.append(make('rect',{class:'clade-collapse-hit',
-            x:controlX,y:controlY,width:controlWidth,height:controlHeight,rx:7}));
-          const caption=make('text',{class:'clade-collapse-caption',
-            x:controlX+11,y:controlY+controlHeight/2,
-            'dominant-baseline':'middle'});
-          caption.textContent='收起';
-          more.append(caption);
-          more.append(make('path',{class:'clade-collapse-chevron',
-            d:'M '+(controlX+41)+' '+(controlY+12)+
-              ' l4 4 4 -4'}));
         }else{
           const glyph=expanded?'−':hidden>99?'99+':'+'+hidden;
           const width=14+glyph.length*7.2;
@@ -1020,6 +993,23 @@
         ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
         : '滚轮缩放 · 拖拽移动 · 点击类群查看';
     const focusMode=state.engine==='v2'&&state.detail==='focus';
+    const branchBar=$('branchAction');
+    let branchId=null;
+    if(state.engine==='v2'&&!focusMode){
+      const recent=state.layoutMeta.get(state.lastDisclosureId);
+      const selected=state.layoutMeta.get(state.selected);
+      if(recent?.childIds.length && !recent.collapsed && state.lastDisclosureId!==state.root)
+        branchId=state.lastDisclosureId;
+      else if(selected?.childIds.length && !selected.collapsed && state.selected!==state.root)
+        branchId=state.selected;
+    }
+    state.branchActionId=branchId;
+    branchBar.hidden=!branchId;
+    branchBar.parentElement.classList.toggle('has-branch-action',Boolean(branchId));
+    if(branchId){
+      $('branchActionName').textContent=byId.get(branchId)?.zh||branchId;
+      $('collapseBranch').setAttribute('aria-label','收起'+(byId.get(branchId)?.zh||'当前')+'支系');
+    }
     const controls=$('focusCommands'),toggle=$('showMoreChildren'),status=$('focusStatus');
     controls.hidden=!focusMode;
     $('graphMinimap').hidden=focusMode;
@@ -1332,6 +1322,9 @@
       if(random)selectNode(random.id);
     });
     $('scaleSelect').addEventListener('change',e=>{state.scale=e.target.value;render(true);});
+    $('collapseBranch').addEventListener('click',()=>{
+      if(state.branchActionId)toggleBranch(state.branchActionId,{restoreFocus:true});
+    });
     $('showMoreChildren').addEventListener('click',()=>{
       if(state.expandedIds.has(state.root))state.expandedIds.delete(state.root);
       else state.expandedIds.add(state.root);
