@@ -136,7 +136,7 @@ async function main(){
     assert.equal(await cat.locator('.collapsed-summary').count(),1,
       'selecting a clade must not silently expand its descendants');
     const beforeExpansion=await page.locator('#nodeLayer .node').count();
-    await cat.locator('.clade-hit-area').dispatchEvent('click');
+    await cat.locator('.clade-hit-area').click();
     assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').getAttribute('aria-expanded'),'true');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),1,
       'local expansion must show true taxon children without changing root');
