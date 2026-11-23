@@ -200,22 +200,127 @@
   function layout(){
     return state.engine==='v2'?layoutV2():layoutLegacy();
   }
-  function toggleBranch(id){
+  // Short, interruptible geometry transitions help the user follow which
+  // descendants belong to the disclosure they just opened or closed.
+  let treeMotion=null;
+  const motionDuration=195;
+  function finishTreeMotion(){
+    if(!treeMotion)return;
+    const motion=treeMotion;treeMotion=null;
+    cancelAnimationFrame(motion.frame);
+    motion.nodes.forEach(({el,to})=>{
+      el.setAttribute('transform','translate('+to.x+' '+to.y+')');
+      el.style.opacity='';
+    });
+    motion.paths.forEach(({el,to})=>{
+      el.setAttribute('d','M '+to.x1+' '+to.y1+' L '+to.x2+' '+to.y2);
+      el.style.opacity='';
+    });
+    motion.ghosts.forEach(el=>el.remove());
+  }
+  function animateTreeDisclosure(previousPositions,previousSegments,previousElements,id){
+    if(state.engine!=='v2'||state.detail==='focus'||
+       state.visible.length>180||
+       window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    const anchor=previousPositions.get(id)||state.pos.get(id);
+    if(!anchor)return;
+    const layer=$('nodeLayer'),nodes=[],paths=[],ghosts=[];
+    const present=new Set(state.visible.map(n=>n.id));
+    for(const el of layer.querySelectorAll(':scope > .node')){
+      const to=state.pos.get(el.dataset.id);
+      if(!to)continue;
+      const from=previousPositions.get(el.dataset.id)||anchor;
+      const entering=!previousPositions.has(el.dataset.id);
+      if(entering || Math.abs(from.x-to.x)+Math.abs(from.y-to.y)>.3){
+        nodes.push({el,from,to,entering});
+        el.setAttribute('transform','translate('+from.x+' '+from.y+')');
+        if(entering)el.style.opacity='0';
+      }
+    }
+    const segKey=seg=>seg.kind+':'+seg.ownerId+':'+(seg.childId||'');
+    const previous=new Map(previousSegments.map(seg=>[segKey(seg),seg]));
+    const edges=[...$('edgeLayer').querySelectorAll(':scope > path')];
+    state.layoutSegments.forEach((to,index)=>{
+      const el=edges[index];
+      if(!el)return;
+      const from=previous.get(segKey(to))||
+        {x1:anchor.x,y1:anchor.y,x2:anchor.x,y2:anchor.y};
+      const entering=!previous.has(segKey(to));
+      paths.push({el,from,to,entering});
+      el.setAttribute('d','M '+from.x1+' '+from.y1+' L '+from.x2+' '+from.y2);
+      if(entering)el.style.opacity='0';
+    });
+    // Keep removed tips briefly visible while they converge on their true
+    // parent. Ghosts never intercept input or appear as active SVG nodes.
+    if(previousElements.size<140){
+      for(const [oldId,oldEl] of previousElements){
+        if(present.has(oldId))continue;
+        const from=previousPositions.get(oldId);
+        if(!from)continue;
+        const ghost=oldEl.cloneNode(true);
+        ghost.classList.remove('node');ghost.classList.add('branch-motion-ghost');
+        ghost.removeAttribute('data-id');ghost.removeAttribute('tabindex');
+        ghost.removeAttribute('role');ghost.setAttribute('aria-hidden','true');
+        ghost.style.pointerEvents='none';
+        ghost.querySelectorAll('[role],[tabindex],[data-expand]').forEach(child=>{
+          child.removeAttribute('role');child.removeAttribute('tabindex');
+          child.removeAttribute('data-expand');
+        });
+        layer.append(ghost);
+        ghosts.push(ghost);
+      }
+    }
+    if(!nodes.length&&!ghosts.length)return;
+    const motion={frame:0,nodes,paths,ghosts};
+    treeMotion=motion;
+    let origin=null;
+    const mix=(a,b,t)=>a+(b-a)*t;
+    const frame=timestamp=>{
+      if(treeMotion!==motion)return;
+      if(origin===null)origin=timestamp;
+      const t=Math.min(1,(timestamp-origin)/motionDuration);
+      const eased=1-Math.pow(1-t,3);
+      for(const item of nodes){
+        item.el.setAttribute('transform','translate('+
+          mix(item.from.x,item.to.x,eased)+' '+
+          mix(item.from.y,item.to.y,eased)+')');
+        if(item.entering)item.el.style.opacity=String(eased);
+      }
+      for(const item of paths){
+        const v=key=>mix(item.from[key],item.to[key],eased);
+        item.el.setAttribute('d','M '+v('x1')+' '+v('y1')+
+          ' L '+v('x2')+' '+v('y2'));
+        if(item.entering)item.el.style.opacity=String(eased);
+      }
+      for(const ghost of ghosts){
+        const oldId=[...previousElements].find(([,el])=>el===ghost)?.[0];
+        // Removed nodes are only visual echoes; no ARIA or hit targets.
+        ghost.style.opacity=String(1-eased);
+      }
+      if(t<1)motion.frame=requestAnimationFrame(frame);
+      else finishTreeMotion();
+    };
+    motion.frame=requestAnimationFrame(frame);
+  }
+  function toggleBranch(id,{restoreFocus=false}={}){
     if(state.engine!=='v2'||!byId.has(id))return;
+    finishTreeMotion();
     const node=state.layoutMeta.get(id);
     if(!node)return;
     const old=state.pos.get(id),screenX=old?state.tx+old.x*state.zoom:null,
       screenY=old?state.ty+old.y*state.zoom:null;
+    const previousPositions=new Map([...state.pos].map(([key,p])=>[key,{...p}]));
+    const previousSegments=state.layoutSegments.map(seg=>({...seg}));
+    const previousElements=new Map([...$('nodeLayer').querySelectorAll(':scope > .node')]
+      .map(el=>[el.dataset.id,el]));
     if(node.collapsed){
       state.foldedIds.delete(id);
       state.expandedIds.add(id);
     }else if(node.childIds.length){
       state.foldedIds.add(id);
       state.expandedIds.delete(id);
-      // A descendant cannot remain selected when its branch is hidden.
       if(state.selected&&state.selected!==id&&inside(state.selected,id)){
-        state.selected=id;
-        showDetail(byId.get(id));
+        state.selected=id;showDetail(byId.get(id));
       }
     }else return;
     render(false);
@@ -225,6 +330,12 @@
       state.ty=screenY-updated.y*state.zoom;
     }
     applyTransform();
+    animateTreeDisclosure(previousPositions,previousSegments,previousElements,id);
+    if(restoreFocus){
+      const focus=$('nodeLayer').querySelector('[data-expand="'+id+'"]')||
+        $('nodeLayer').querySelector('[data-id="'+id+'"]');
+      focus?.focus({preventScroll:true});
+    }
     syncUrl();
   }
 
@@ -565,13 +676,14 @@
           count.textContent=glyph;more.append(count);
         }
         if(state.engine==='v2')more.setAttribute('aria-expanded',String(expanded));
-        const action=()=>state.engine==='v2'?toggleBranch(n.id):focusRoot(n.id);
+        const action=(keyboard=false)=>state.engine==='v2'
+          ?toggleBranch(n.id,{restoreFocus:keyboard}):focusRoot(n.id);
         more.addEventListener('click',event=>{
-          event.preventDefault();event.stopPropagation();action();
+          event.preventDefault();event.stopPropagation();action(false);
         });
         more.addEventListener('keydown',event=>{
           if(event.key==='Enter'||event.key===' '){
-            event.preventDefault();event.stopPropagation();action();
+            event.preventDefault();event.stopPropagation();action(true);
           }
         });
         node.append(more);
@@ -851,6 +963,7 @@
     box.scrollLeft=box.scrollWidth;
   }
   function render(fitNow=false){
+    finishTreeMotion();
     $('treeSvg').classList.remove('has-hover');
     hideTip();
     build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
