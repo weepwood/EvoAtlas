@@ -658,3 +658,76 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
 .breadcrumb-popover button:focus-visible{
   outline:none;background:var(--surface-alt);
 }
+
+
+/* Compact, full-row taxon disclosures in overview/full tree.
+   The 12×12 chevron triangle is a control, not a scientific split. */
+.graph-stage[data-engine=v2] .node-more.collapsed-summary{
+  cursor:pointer;
+  opacity:1!important;
+  pointer-events:auto!important;
+}
+.graph-stage[data-engine=v2] .collapsed-summary .clade-row-bg{
+  fill:var(--surface-alt);
+  stroke:var(--line);
+  stroke-width:.7;
+  opacity:0;
+  transition:opacity .14s ease;
+}
+.graph-stage[data-engine=v2] .collapsed-summary .clade-wedge{
+  fill:var(--surface-alt);
+  stroke:var(--primary);
+  stroke-width:1.05;
+  stroke-linejoin:round;
+  opacity:.68;
+  transition:opacity .14s ease,fill .14s ease;
+}
+.graph-stage[data-engine=v2] .collapsed-summary .clade-summary-name{
+  fill:var(--text);
+  font-size:13px;
+  font-weight:620;
+  paint-order:stroke;
+  stroke:var(--canvas);
+  stroke-width:2.5px;
+  pointer-events:none;
+}
+.graph-stage[data-engine=v2] .collapsed-summary .clade-summary-count{
+  fill:var(--muted);
+  font-size:11px;
+  font-weight:430;
+  paint-order:stroke;
+  stroke:var(--canvas);
+  stroke-width:2px;
+  pointer-events:none;
+}
+.graph-stage[data-engine=v2] .collapsed-summary .clade-hit-area{
+  fill:transparent;
+  stroke:none;
+  pointer-events:all;
+}
+.graph-stage[data-engine=v2] .collapsed-summary:is(:hover,:focus-visible) .clade-row-bg{
+  opacity:1;
+}
+.graph-stage[data-engine=v2] .collapsed-summary:is(:hover,:focus-visible) .clade-wedge{
+  opacity:1;
+  fill:var(--primary-soft);
+}
+.graph-stage[data-engine=v2] .collapsed-summary:is(:hover,:focus-visible) .clade-summary-name{
+  fill:var(--primary);
+}
+.graph-stage[data-engine=v2] .collapsed-summary:focus-visible{
+  outline:none;
+}
+.graph-stage[data-engine=v2] .collapsed-summary:focus-visible .clade-row-bg{
+  stroke:var(--primary);
+  stroke-width:1.25;
+}
+.graph-stage[data-engine=v2] .branch-motion-ghost{
+  pointer-events:none!important;
+}
+@media(prefers-reduced-motion:reduce){
+  .graph-stage[data-engine=v2] .collapsed-summary .clade-row-bg,
+  .graph-stage[data-engine=v2] .collapsed-summary .clade-wedge{
+    transition:none;
+  }
+}
