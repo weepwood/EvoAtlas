@@ -212,6 +212,13 @@ async function main(){
     assert.match(await page.locator('#focusStatus').innerText(),/7 \/ 23/);
     assert.match(await page.locator('#showMoreChildren').innerText(),/16/);
     await page.screenshot({path:'artifacts/evoatlas-fanout-focused.png'});
+    assert.equal(await page.locator('#headerBreadcrumb .breadcrumb-overflow').count(),1,
+      'deep focused lineage should not overflow the header');
+    await page.locator('#headerBreadcrumb .breadcrumb-overflow').click();
+    assert.equal(await page.locator('#breadcrumbMenu').isVisible(),true);
+    assert.ok(await page.locator('#breadcrumbMenu [role="menuitem"]').count()>=3);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#breadcrumbMenu').isVisible(),false);
     await page.locator('#showMoreChildren').click();
     assert.equal(await page.locator('#nodeLayer .node').count(),24);
     await page.locator('#showMoreChildren').click();
