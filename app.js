@@ -21,7 +21,7 @@
     visible:[],parents:new Map(),pos:new Map(),width:1500,height:700,maxMa:4000,tx:0,ty:0,zoom:1,drag:null,
     searchHits:[],searchIndex:0,theme:'system',
     engine:(new URLSearchParams(location.search).get('layout')==='legacy'||!window.EvoLayoutEngine||!window.EvoTreeProjection)?'legacy':'v2',
-    layoutMode:'structure',foldedIds:new Set(),expandedIds:new Set(),
+    layoutMode:'structure',foldedIds:new Set(),expandedIds:new Set(),lastDisclosureId:null,
     layoutSegments:[],layoutMeta:new Map(),layoutDepthStep:145,
     layoutMarginX:58,layoutRightInset:185,layoutPlotWidth:1400};
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -318,9 +318,11 @@
     if(node.collapsed){
       state.foldedIds.delete(id);
       state.expandedIds.add(id);
+      state.lastDisclosureId=id;
     }else if(node.childIds.length){
       state.foldedIds.add(id);
       state.expandedIds.delete(id);
+      if(state.lastDisclosureId===id)state.lastDisclosureId=null;
       if(state.selected&&state.selected!==id&&inside(state.selected,id)){
         state.selected=id;showDetail(byId.get(id));
       }
@@ -612,7 +614,7 @@
     state.visible.forEach(n=>{
       const point=state.pos.get(n.id),meta=labels.get(n.id);
       if(!point||!meta)return;
-      const node=make('g',{class:'node '+n.status+(meta.leaf?' terminal':' internal')+(n.id===state.selected?' selected':''),
+      const node=make('g',{class:'node '+n.status+(meta.leaf?' terminal':' internal')+(n.id===state.selected?' selected':'')+(n.id===state.lastDisclosureId?' disclosure-recent':''),
         transform:'translate('+point.x+' '+point.y+')','data-id':n.id,tabindex:0,role:'button',
         'aria-label':n.zh+'，'+n.rank+'，'+nodeAge(n)});
       node.append(make('circle',{class:'node-halo',r:12}),make('circle',{class:'node-core',r:n.id===state.root?6:4.8}));
