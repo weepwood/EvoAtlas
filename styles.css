@@ -733,30 +733,42 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
 }
 
 
-/* The reverse disclosure is only visible when the expanded branch is
-   hovered or keyboard focused; its 28×34 target remains comfortably usable. */
-.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
-  fill:var(--surface-alt);stroke:var(--line);
-  stroke-width:.75;opacity:0;
-  transition:opacity .14s ease;
+
+/* An expanded branch is controlled from the fixed footer, not from its
+   geometric node/stem intersection or a neighboring taxon label. */
+.branch-action[hidden]{display:none!important}
+.branch-action{
+  display:flex;align-items:center;gap:11px;min-width:0;
+  color:var(--muted);font-size:12px;
 }
-.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-chevron{
-  fill:none;stroke:var(--primary);
-  stroke-width:1.45;stroke-linecap:round;stroke-linejoin:round;
-  pointer-events:none;
+.branch-action-caption{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.graph-stage[data-engine=v2] .node:hover .clade-collapse-toggle .clade-collapse-hit,
-.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
-  opacity:1;
+.branch-action-caption strong{
+  color:var(--text);font-weight:620;margin-left:4px;
 }
-.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible{
-  outline:none;
+.branch-action button{
+  flex:none;min-height:30px;padding:5px 11px;
+  border:1px solid var(--line);border-radius:7px;
+  background:var(--surface);color:var(--text);
+  font-size:12px;font-weight:600;
+  cursor:pointer;
+  transition:background .14s ease,border-color .14s ease;
 }
-.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
-  stroke:var(--primary);stroke-width:1.3;
+.branch-action button:hover{
+  background:var(--surface-alt);border-color:var(--primary);
+}
+.branch-action button:focus-visible{
+  outline:2px solid var(--primary);outline-offset:2px;
+}
+.viewer-footer.has-branch-action .viewer-caveat{display:none}
+@media(max-width:780px){
+  .viewer-footer.has-branch-action .legend-inline{display:none}
+  .viewer-footer.has-branch-action .branch-action{
+    flex:1;width:100%;justify-content:space-between;
+  }
+  .branch-action button{min-height:36px}
 }
 @media(prefers-reduced-motion:reduce){
-  .graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
-    transition:none;
-  }
+  .branch-action button{transition:none}
 }

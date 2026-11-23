@@ -175,35 +175,72 @@ async function main(){
       'selecting a clade must not silently expand its descendants');
     const beforeExpansion=await page.locator('#nodeLayer .node').count();
     await cat.locator('.clade-hit-area').click();
-    assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').getAttribute('aria-expanded'),'true');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),1,
       'local expansion must show true taxon children without changing root');
     assert.ok(await page.locator('#nodeLayer .node').count()>beforeExpansion);
     assert.equal(await page.locator('#headerBreadcrumb [aria-current="location"]').innerText(),
       await page.evaluate(()=>window.EVO_TAXA.find(t=>t.id==='mammalia').zh));
+    assert.equal(await page.locator('#nodeLayer .clade-collapse-toggle').count(),0,
+      'expanded branches must no longer render controls over tree lines or labels');
+    assert.equal(await page.locator('#branchAction').isVisible(),true);
+    assert.equal(await page.locator('#branchActionName').innerText(),'猫科');
+    assert.match(await page.locator('#collapseBranch').getAttribute('aria-label'),/猫科/);
+    const relativeRegions=await page.evaluate(()=>{
+      const stage=document.getElementById('graphStage').getBoundingClientRect();
+      const bar=document.getElementById('branchAction').getBoundingClientRect();
+      return {stageBottom:stage.bottom,barTop:bar.top};
+    });
+    assert.ok(relativeRegions.barTop>=relativeRegions.stageBottom,
+      'the collapse toolbar must stay outside the SVG drawing surface');
     await page.waitForTimeout(240);
     await page.screenshot({path:'artifacts/evoatlas-clade-expanded.png'});
-    const collapseControl=page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle');
+    await page.screenshot({path:'artifacts/evoatlas-clade-collapse-toolbar.png'});
+    const collapseControl=page.locator('#collapseBranch');
+    await collapseControl.click();
+    assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
+      'toolbar button must collapse only family descendants');
+    assert.equal(await page.locator('#branchAction').isVisible(),true,
+      'toolbar must remain stable when toggled');
+    assert.equal(await page.locator('#branchActionState').innerText(),'已收起');
+    assert.equal(await collapseControl.innerText(),'展开支系');
+    assert.equal(await collapseControl.getAttribute('aria-expanded'),'false');
+
+    await collapseControl.click();
+    assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),1,
+      'same fixed button must re-open the branch without relocating');
+    assert.equal(await collapseControl.innerText(),'收起支系');
     await collapseControl.focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
       'keyboard Enter must collapse only family descendants');
+    assert.equal(await collapseControl.evaluate(el=>el===document.activeElement),true,
+      'keyboard focus must remain on the same fixed button during toggling');
     assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .collapsed-summary').getAttribute('aria-expanded'),'false');
-    assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .collapsed-summary').evaluate(el=>el===document.activeElement),true,
-      'keyboard focus must survive geometry rerender');
     await page.waitForTimeout(260);
     assert.equal(await page.locator('.branch-motion-ghost').count(),0,
       'temporary collapse ghosts must be removed');
+
+    // The SVG summary can also be operated by keyboard. Focus transfers
+    // to the fixed action rather than a removed SVG node.
+    await page.locator('#nodeLayer .node[data-id="felidae"] .collapsed-summary').focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>
+      document.activeElement===document.getElementById('collapseBranch'),
+      null,{timeout:1200});
+    assert.equal(await collapseControl.innerText(),'收起支系');
+    await collapseControl.click();
+
     await page.emulateMedia({reducedMotion:'reduce'});
-    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-hit-area').dispatchEvent('click');
+    await collapseControl.click();
     assert.equal(await page.locator('.branch-motion-ghost').count(),0,
       'reduced motion should not create transient animation ghosts');
-    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').dispatchEvent('click');
+    await collapseControl.click();
     await page.emulateMedia({reducedMotion:'no-preference'});
-    // Interrupt an in-flight open transition by immediately closing again.
-    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-hit-area').dispatchEvent('click');
+
+    // Interrupt an in-flight opening transition through the same stable bar.
+    await collapseControl.click();
     await page.waitForTimeout(55);
-    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').dispatchEvent('click');
+    await collapseControl.click();
     await page.waitForTimeout(260);
     assert.equal(await page.locator('.branch-motion-ghost').count(),0,
       'rapid open-close must cancel prior animation without leaving ghosts');

@@ -21,7 +21,7 @@
     visible:[],parents:new Map(),pos:new Map(),width:1500,height:700,maxMa:4000,tx:0,ty:0,zoom:1,drag:null,
     searchHits:[],searchIndex:0,theme:'system',
     engine:(new URLSearchParams(location.search).get('layout')==='legacy'||!window.EvoLayoutEngine||!window.EvoTreeProjection)?'legacy':'v2',
-    layoutMode:'structure',foldedIds:new Set(),expandedIds:new Set(),
+    layoutMode:'structure',foldedIds:new Set(),expandedIds:new Set(),lastDisclosureId:null,
     layoutSegments:[],layoutMeta:new Map(),layoutDepthStep:145,
     layoutMarginX:58,layoutRightInset:185,layoutPlotWidth:1400};
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -318,9 +318,11 @@
     if(node.collapsed){
       state.foldedIds.delete(id);
       state.expandedIds.add(id);
+      state.lastDisclosureId=id;
     }else if(node.childIds.length){
       state.foldedIds.add(id);
       state.expandedIds.delete(id);
+      state.lastDisclosureId=id;
       if(state.selected&&state.selected!==id&&inside(state.selected,id)){
         state.selected=id;showDetail(byId.get(id));
       }
@@ -334,9 +336,12 @@
     applyTransform();
     animateTreeDisclosure(previousPositions,previousSegments,previousElements,id);
     if(restoreFocus){
-      const focus=$('nodeLayer').querySelector('[data-expand="'+id+'"]')||
-        $('nodeLayer').querySelector('[data-id="'+id+'"]');
-      focus?.focus({preventScroll:true});
+      // The fixed HTML control stays mounted during both transitions.
+      // For keyboard activation of an SVG summary, move focus to that
+      // stable control rather than an element being recreated.
+      requestAnimationFrame(()=>{
+        if(!$('branchAction').hidden)$('collapseBranch').focus({preventScroll:true});
+      });
     }
     syncUrl();
   }
@@ -640,7 +645,7 @@
       const hasChildren=(children.get(n.id)||[]).length>0;
       const layoutNode=state.engine==='v2'?state.layoutMeta.get(n.id):null;
       const canToggle=state.engine==='v2'
-        ? state.detail!=='focus'&&Boolean(layoutNode&&(layoutNode.collapsed||layoutNode.childIds.length))
+        ? state.detail!=='focus'&&Boolean(layoutNode?.collapsed)
         : state.detail==='overview'&&hidden>=3&&hasChildren;
       if(n.id!==state.root && canToggle){
         const expanded=state.engine==='v2' && !layoutNode.collapsed;
@@ -670,14 +675,6 @@
           count.textContent=countText;more.append(count);
           more.append(make('rect',{class:'clade-hit-area',x:6,y:-20,
             width:hitWidth-6,height:40,rx:6}));
-        }else if(state.engine==='v2'&&expanded){
-          // Once expanded, the same branch gets a subtle reverse disclosure
-          // beside its junction, not another chip below the label.
-          more.classList.add('clade-collapse-toggle');
-          more.append(make('rect',{class:'clade-collapse-hit',
-            x:-30,y:-17,width:28,height:34,rx:6}));
-          more.append(make('path',{class:'clade-collapse-chevron',
-            d:'M -23 -2 L -16 5 L -9 -2'}));
         }else{
           const glyph=expanded?'−':hidden>99?'99+':'+'+hidden;
           const width=14+glyph.length*7.2;
@@ -688,6 +685,10 @@
         if(state.engine==='v2')more.setAttribute('aria-expanded',String(expanded));
         const action=(keyboard=false)=>state.engine==='v2'
           ?toggleBranch(n.id,{restoreFocus:keyboard}):focusRoot(n.id);
+        more.addEventListener('pointerdown',event=>{
+          // A tap on a disclosure is a button action, not a canvas pan.
+          event.stopPropagation();
+        });
         more.addEventListener('click',event=>{
           event.preventDefault();event.stopPropagation();action(false);
         });
@@ -716,10 +717,10 @@
       node.addEventListener('keydown',e=>navigateNodeKeyboard(e,n.id));
       node.addEventListener('mouseenter',e=>{
         highlightLineage(n.id);
-        if(!e.target.closest('.collapsed-summary'))scheduleTip(e,n);
+        if(!e.target.closest('.collapsed-summary, .clade-collapse-toggle'))scheduleTip(e,n);
       });
       node.addEventListener('mousemove',e=>{
-        if(e.target.closest('.collapsed-summary'))hideTip();
+        if(e.target.closest('.collapsed-summary, .clade-collapse-toggle'))hideTip();
         else moveTip(e);
       });
       node.addEventListener('mouseleave',()=>{highlightLineage(null);hideTip();});
@@ -995,6 +996,30 @@
         ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
         : '滚轮缩放 · 拖拽移动 · 点击类群查看';
     const focusMode=state.engine==='v2'&&state.detail==='focus';
+    const branchBar=$('branchAction');
+    let branchId=null;
+    if(state.engine==='v2'&&!focusMode){
+      const recent=state.layoutMeta.get(state.lastDisclosureId);
+      const selected=state.layoutMeta.get(state.selected);
+      if(recent && (children.get(state.lastDisclosureId)||[]).length &&
+         state.lastDisclosureId!==state.root)
+        branchId=state.lastDisclosureId;
+      else if(selected && (children.get(state.selected)||[]).length &&
+              state.selected!==state.root)
+        branchId=state.selected;
+    }
+    state.branchActionId=branchId;
+    branchBar.hidden=!branchId;
+    branchBar.parentElement.classList.toggle('has-branch-action',Boolean(branchId));
+    if(branchId){
+      const collapsed=Boolean(state.layoutMeta.get(branchId)?.collapsed);
+      const verb=collapsed?'展开':'收起';
+      $('branchActionState').textContent=collapsed?'已收起':'已展开';
+      $('branchActionName').textContent=byId.get(branchId)?.zh||branchId;
+      $('collapseBranch').textContent=verb+'支系';
+      $('collapseBranch').setAttribute('aria-label',verb+(byId.get(branchId)?.zh||'当前')+'支系');
+      $('collapseBranch').setAttribute('aria-expanded',String(!collapsed));
+    }
     const controls=$('focusCommands'),toggle=$('showMoreChildren'),status=$('focusStatus');
     controls.hidden=!focusMode;
     $('graphMinimap').hidden=focusMode;
@@ -1028,7 +1053,8 @@
       pendingTip=0;
       const el=[...$('nodeLayer').querySelectorAll(':scope > .node')]
         .find(node=>node.dataset.id===n.id);
-      if(el?.matches(':hover') && !el.querySelector('.collapsed-summary:hover')){
+      if(el?.matches(':hover') &&
+         !el.querySelector('.collapsed-summary:hover, .clade-collapse-toggle:hover')){
         showTip(pendingTipPoint,n);
       }
     },420);
@@ -1131,7 +1157,7 @@
   }
   function reset(){
     Object.assign(state,{root:'luca',scale:'log',layoutMode:state.engine==='legacy'?'time':'structure',detail:state.engine==='legacy'?'overview':'focus',extinct:true,events:true,selected:null});
-    state.foldedIds.clear();state.expandedIds.clear();
+    state.foldedIds.clear();state.expandedIds.clear();state.lastDisclosureId=null;
     $('scaleSelect').value='log';$('layoutModeSelect').value=state.layoutMode;$('detailSelect').value=state.detail;
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
     window.EvoSelect?.syncAll();
@@ -1306,6 +1332,9 @@
       if(random)selectNode(random.id);
     });
     $('scaleSelect').addEventListener('change',e=>{state.scale=e.target.value;render(true);});
+    $('collapseBranch').addEventListener('click',()=>{
+      if(state.branchActionId)toggleBranch(state.branchActionId);
+    });
     $('showMoreChildren').addEventListener('click',()=>{
       if(state.expandedIds.has(state.root))state.expandedIds.delete(state.root);
       else state.expandedIds.add(state.root);
