@@ -97,3 +97,49 @@ test('root overview distributes attention across the major lineages',()=>{
   assert.ok(counts.eukaryota>=9,'eukaryotes must receive visible space');
   assert.ok(result.graph.nodes.length<=36);
 });
+
+
+test('focus explorer shows a sparse, canonical two-generation window',()=>{
+  for(const rootId of ['luca','eukaryota','mammalia']){
+    const input=project(taxonomy,{rootId,detail:'focus',focusLimit:12});
+    const ids=new Set(input.records.map(n=>n.id));
+    assert.ok(input.records.length>=4 && input.records.length<=12,rootId);
+    for(const record of input.records){
+      const real=taxonomy.find(n=>n.id===record.id);
+      assert.ok(real);
+      assert.equal(record.parent,record.id===rootId?null:real.parent);
+      if(record.parent)assert.ok(ids.has(record.parent),
+        'focus must not hide intermediate ancestors');
+    }
+    assert.ok(input.hiddenDescendants[rootId]>0);
+  }
+});
+
+test('large direct fanout is paged without artificial taxonomy nodes',()=>{
+  const rootId='actinopterygii';
+  const limited=project(taxonomy,{rootId,detail:'focus',focusLimit:12});
+  assert.equal(limited.directCount,23);
+  assert.equal(limited.directShown,7);
+  assert.equal(limited.remainingDirect,16);
+  assert.equal(limited.records.length,8);
+  const expanded=project(taxonomy,{rootId,detail:'focus',
+    focusLimit:12,expandedIds:[rootId]});
+  assert.equal(expanded.records.length,24);
+  assert.equal(expanded.remainingDirect,0);
+  for(const n of expanded.records.slice(1))assert.equal(n.parent,rootId);
+  assert.equal(JSON.stringify(taxonomy),origin);
+});
+
+test('mobile focus is shallower but still navigable and pins deep searches',()=>{
+  const rootId='mammalia';
+  const mobile=project(taxonomy,{rootId,detail:'focus',mobile:true,focusLimit:7});
+  assert.equal(mobile.records.length,4);
+  assert.equal(mobile.records[0].id,rootId);
+  const pinned=project(taxonomy,{rootId,detail:'focus',mobile:true,
+    focusLimit:7,selectedId:'catalog-panthera-tigris'});
+  const map=new Map(pinned.records.map(n=>[n.id,n]));
+  let node=map.get('catalog-panthera-tigris');
+  assert.ok(node);
+  while(node?.parent)node=map.get(node.parent);
+  assert.equal(node.id,rootId);
+});

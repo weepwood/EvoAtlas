@@ -17,7 +17,7 @@
     {ma:66,name:'白垩纪末'}
   ];
   const featured = new Set(['sapiens','pan','neanderthal','australopithecus','gallus','tyrannosaurus','archaeopteryx','tiktaalik','arabidopsis','saccharomyces','canis','felis','balaenoptera','mus','pongo','gorilla','danaus','danio','ornithorhynchus','drosophila']);
-  const state = {view:'tree',root:'luca',scale:'log',detail:'overview',extinct:true,events:true,selected:null,
+  const state = {view:'tree',root:'luca',scale:'log',detail:new URLSearchParams(location.search).get('layout')==='legacy'?'overview':'focus',extinct:true,events:true,selected:null,
     visible:[],parents:new Map(),pos:new Map(),width:1500,height:700,maxMa:4000,tx:0,ty:0,zoom:1,drag:null,
     searchHits:[],searchIndex:0,theme:'system',
     engine:(new URLSearchParams(location.search).get('layout')==='legacy'||!window.EvoLayoutEngine||!window.EvoTreeProjection)?'legacy':'v2',
@@ -121,6 +121,7 @@
     const view=window.EvoTreeProjection.project(taxa,{
       rootId:state.root,detail:state.detail,selectedId:state.selected,
       extinct:state.extinct,budget:window.innerWidth<700?20:36,
+      mobile:window.innerWidth<700,focusLimit:window.innerWidth<700?7:12,
       foldedIds:state.foldedIds,expandedIds:state.expandedIds
     });
     state.layoutSource=view;
@@ -131,7 +132,9 @@
   }
   function layoutV2(){
     const stage=$('graphStage'),stageWidth=stage.clientWidth||900;
-    state.layoutMarginX=68;state.layoutRightInset=310;
+    const focused=state.detail==='focus';
+    state.layoutMarginX=focused?50:68;
+    state.layoutRightInset=focused?(stageWidth<700?185:230):310;
     // A focused star-like clade often has only one or two levels. Its tips
     // should use the canvas width instead of clustering next to the trunk.
     const allowed=new Set(state.layoutSource.records.map(n=>n.id));
@@ -146,24 +149,31 @@
         if(allowed.has(child))stack.push([child,depth+1]);
       }
     }
-    state.layoutDepthStep=state.layoutMode==='structure'
-      ?stageWidth<700?112:visibleDepth<=1?420:visibleDepth===2?240:165
-      :165;
-    state.layoutPlotWidth=state.layoutMode==='structure'
-      ?Math.max(1040,stageWidth*1.2)
-      :state.scale==='linear'?Math.max(960,stageWidth*1.18)
-      :Math.max(940,stageWidth*1.12);
+    state.layoutDepthStep=focused
+      ?(stageWidth<700?146:220)
+      :state.layoutMode==='structure'
+        ?stageWidth<700?112:visibleDepth<=1?420:visibleDepth===2?240:165
+        :165;
+    state.layoutPlotWidth=focused?Math.max(stageWidth<700?620:670,stageWidth-8)
+      :state.layoutMode==='structure'
+        ?Math.max(1040,stageWidth*1.2)
+        :state.scale==='linear'?Math.max(960,stageWidth*1.18)
+        :Math.max(940,stageWidth*1.12);
     const result=window.EvoLayoutEngine.layoutTree(state.layoutSource.records,{
       rootId:state.root,mode:state.layoutMode,timeScale:state.scale,
-      collapsedIds:state.layoutSource.collapsedIds,sort:'input',alignTips:state.layoutMode==='structure',
+      collapsedIds:state.layoutSource.collapsedIds,sort:'input',
+      alignTips:state.layoutMode==='structure'&&!focused,
       plotWidth:state.layoutPlotWidth,
       marginX:state.layoutMarginX,rightInset:state.layoutRightInset,
-      marginY:64,labelHeight:22,leafGap:16,subtreeGap:27,depthStep:state.layoutDepthStep
+      marginY:64,labelHeight:focused?27:22,leafGap:focused?27:16,
+      subtreeGap:focused?38:27,depthStep:state.layoutDepthStep
     });
     state.layoutMeta=new Map(result.nodes.map(n=>[n.id,n]));
     state.visible=result.nodes.map(n=>byId.get(n.id));
     state.parents=new Map(result.nodes.map(n=>[n.id,n.parentId]));
-    state.hiddenById=new Map(result.nodes.map(n=>[n.id,n.hiddenDescendants]));
+    state.hiddenById=focused
+      ?new Map(Object.entries(state.layoutSource.hiddenDescendants||{}))
+      :new Map(result.nodes.map(n=>[n.id,n.hiddenDescendants]));
     const stageHeight=stage.clientHeight||600;
     // A small focused tree should not occupy only a 50px strip in a tall
     // mobile canvas. Stretch Y alone; X still means depth or teaching age.
@@ -174,7 +184,8 @@
     const yFactor=tips>=2&&tips<=8&&span>0
       ?Math.max(1,Math.min(4,(stageHeight*.52)/span)):1;
     const laidOutHeight=128+span*yFactor;
-    const minHeight=Math.max(440,(stageHeight-46)/Math.max(.62,Math.min(1,(stageWidth-44)/result.bounds.width)));
+    const minHeight=focused?Math.max(440,stageHeight*1.02)
+      :Math.max(440,(stageHeight-46)/Math.max(.62,Math.min(1,(stageWidth-44)/result.bounds.width)));
     const extraY=Math.max(0,minHeight-laidOutHeight)/2;
     const mapY=y=>64+(y-minY)*yFactor+extraY;
     state.pos=new Map(result.nodes.map(n=>[n.id,{x:n.x,y:mapY(n.y)}]));
@@ -294,6 +305,7 @@
   }
   function drawGrid(){
     const layer=$('gridLayer');layer.replaceChildren();
+    if(state.engine==='v2'&&state.detail==='focus')return;
     if(state.engine==='v2'&&state.layoutMode==='structure'){
       const depths=new Set([...state.layoutMeta.values()].map(n=>n.depth));
       [...depths].sort((a,b)=>a-b).forEach(depth=>{
@@ -314,6 +326,7 @@
   }
   function drawAxisOverlay(){
     const overlay=$('axisOverlay');
+    if(state.engine==='v2'&&state.detail==='focus'){overlay.replaceChildren();return;}
     const width=$('graphStage').clientWidth;
     if(width<10)return;
     overlay.setAttribute('viewBox','0 0 '+width+' 38');
@@ -431,7 +444,20 @@
     measureContext.font=font;
     return measureContext.measureText(text).width+7;
   }
+  function chooseFocusLabels(){
+    return new Map(state.visible.map(n=>{
+      const childCount=state.layoutMeta.get(n.id)?.childIds.length||0;
+      const hidden=state.hiddenById?.get(n.id)||0;
+      const internal=childCount>0||hidden>0;
+      // Parent labels sit above their branching line. Never put the focus
+      // root's title directly on its horizontal sibling connector.
+      const labelY=n.id===state.root?-24:internal?-12:0;
+      return [n.id,{dx:14,dy:labelY,
+        side:'right',leaf:!internal,collapsed:false,hidden:false}];
+    }));
+  }
   function chooseLabelsAtlas(){
+    if(state.detail==='focus')return chooseFocusLabels();
     const labels=new Map(),occupied=[];
     const nodes=[...state.visible].sort((a,b)=>{
       const value=n=>{
@@ -488,12 +514,20 @@
             class:'node-label-guide'}));
         }
         node.append(label);
+        if(state.engine==='v2'&&state.detail==='focus'&&n.id!==state.root){
+          const behind=state.hiddenById?.get(n.id)||0;
+          if(behind){
+            const small=make('text',{class:'focus-node-meta',x:14,y:meta.dy+19});
+            small.textContent=behind+' 个未展开节点';
+            node.append(small);
+          }
+        }
       }
       const hidden=state.hiddenById?.get(n.id)||0;
       const hasChildren=(children.get(n.id)||[]).length>0;
       const layoutNode=state.engine==='v2'?state.layoutMeta.get(n.id):null;
       const canToggle=state.engine==='v2'
-        ? Boolean(layoutNode&&(layoutNode.collapsed||layoutNode.childIds.length))
+        ? state.detail!=='focus'&&Boolean(layoutNode&&(layoutNode.collapsed||layoutNode.childIds.length))
         : state.detail==='overview'&&hidden>=3&&hasChildren;
       if(n.id!==state.root && canToggle){
         const expanded=state.engine==='v2' && !layoutNode.collapsed;
@@ -689,7 +723,10 @@
     if(state.view!=='tree')return;
     const box=$('graphStage').getBoundingClientRect();
     if(box.width<10||box.height<10)return;
-    const natural=Math.max(.12,Math.min(1.5,Math.min((box.width-44)/state.width,(box.height-40)/state.height)));
+    const fitFactor=Math.min((box.width-44)/state.width,(box.height-40)/state.height);
+    const natural=state.engine==='v2'&&state.detail==='focus'
+      ?Math.max(.12,Math.min(1.05,fitFactor))
+      :Math.max(.12,Math.min(1.5,fitFactor));
     const minLegible=box.width<600?.8:.75;
     if(!showEntireTree && natural<minLegible){
       // Dense branches are unreadable when every label is scaled into a
@@ -737,16 +774,62 @@
       label.textContent=viewLabels[state.view]||'生命之树';box.append(label);return;
     }
     const ancestors=path(state.root).reverse();
-    ancestors.forEach((taxon,i)=>{
-      if(i){
-        const slash=document.createElement('span');slash.className='breadcrumb-separator';
-        slash.setAttribute('aria-hidden','true');slash.textContent='/';box.append(slash);
+    const menu=$('breadcrumbMenu');
+    menu.hidden=true;
+    const makeSlash=()=>{
+      const slash=document.createElement('span');
+      slash.className='breadcrumb-separator';
+      slash.setAttribute('aria-hidden','true');
+      slash.textContent='/';
+      return slash;
+    };
+    const makeCrumb=(taxon,current)=>{
+      const button=document.createElement('button');
+      button.type='button';button.textContent=taxon.zh;
+      button.dataset.focus=taxon.id;
+      if(current)button.setAttribute('aria-current','location');
+      button.addEventListener('click',()=>focusRoot(taxon.id));
+      return button;
+    };
+    const abbreviated=state.engine==='v2'&&state.detail==='focus'&&ancestors.length>4;
+    if(!abbreviated){
+      ancestors.forEach((taxon,i)=>{
+        if(i)box.append(makeSlash());
+        box.append(makeCrumb(taxon,i===ancestors.length-1));
+      });
+    }else{
+      box.append(makeCrumb(ancestors[0],false),makeSlash());
+      const middle=document.createElement('button');
+      middle.type='button';middle.textContent='…';
+      middle.className='breadcrumb-overflow';
+      middle.setAttribute('aria-label','查看完整祖先路径');
+      middle.setAttribute('aria-haspopup','menu');
+      middle.setAttribute('aria-expanded','false');
+      middle.addEventListener('click',e=>{
+        e.stopPropagation();
+        const shouldOpen=menu.hidden;
+        menu.replaceChildren();
+        if(shouldOpen){
+          for(const taxon of ancestors.slice(1,-2)){
+            const option=document.createElement('button');
+            option.type='button';option.role='menuitem';
+            option.textContent=taxon.zh;
+            option.addEventListener('click',()=>{menu.hidden=true;focusRoot(taxon.id);});
+            menu.append(option);
+          }
+          const rect=middle.getBoundingClientRect();
+          menu.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-240))+'px';
+          menu.style.top=(rect.bottom+9)+'px';
+        }
+        menu.hidden=!shouldOpen;
+        middle.setAttribute('aria-expanded',String(shouldOpen));
+      });
+      box.append(middle);
+      for(const [i,taxon] of ancestors.slice(-2).entries()){
+        box.append(makeSlash());
+        box.append(makeCrumb(taxon,i===1));
       }
-      const button=document.createElement('button');button.type='button';
-      button.textContent=taxon.zh;button.dataset.focus=taxon.id;
-      if(i===ancestors.length-1)button.setAttribute('aria-current','location');
-      button.addEventListener('click',()=>focusRoot(taxon.id));box.append(button);
-    });
+    }
     box.scrollLeft=box.scrollWidth;
   }
   function render(fitNow=false){
@@ -754,7 +837,9 @@
     hideTip();
     build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
     $('graphStage').dataset.layout=state.layoutMode;
+    $('graphStage').dataset.detail=state.detail;
     $('treeView').dataset.layout=state.layoutMode;
+    $('treeView').dataset.detail=state.detail;
     $('graphStage').dataset.engine=state.engine;
     const structure=state.engine==='v2' && state.layoutMode==='structure';
     $('scaleSelect').disabled=structure;
@@ -764,10 +849,25 @@
     $('graphEmpty').hidden=state.visible.length>0;
     const hint=$('graphStage').querySelector('.graph-overlay-hint');
     if(hint)hint.textContent=state.engine==='v2'
-      ? '点击三角展开支系 · 双击聚焦 · 滚轮缩放'
+      ? state.detail==='focus'?'双击节点深入类群':'点击三角展开支系 · 双击聚焦 · 滚轮缩放'
       : state.detail==='overview'&&state.visible.length<state.totalAvailable
         ? '显示 '+state.visible.length+'/'+state.totalAvailable+' · 双击或点 +N 深入支系'
         : '滚轮缩放 · 拖拽移动 · 点击类群查看';
+    const focusMode=state.engine==='v2'&&state.detail==='focus';
+    const controls=$('focusCommands'),toggle=$('showMoreChildren'),status=$('focusStatus');
+    controls.hidden=!focusMode;
+    $('graphMinimap').hidden=focusMode;
+    if(focusMode){
+      const count=state.layoutSource.directCount||0;
+      const shown=state.layoutSource.directShown||0;
+      const more=state.layoutSource.remainingDirect||0;
+      status.textContent=count
+        ?'本级已显示 '+shown+' / '+count+' 个直属类群'
+        :'当前类群暂无下级条目';
+      const expanded=state.expandedIds.has(state.root);
+      toggle.hidden=!more&&!expanded;
+      toggle.textContent=expanded?'恢复精简':'显示其余 '+more+' 项';
+    }
     updateClades();updateHeaderBreadcrumb();
     if(fitNow)requestAnimationFrame(()=>fit());else applyTransform();
   }
@@ -795,6 +895,10 @@
   function selectNode(id,{center=true,open=true}={}){
     const n=byId.get(id);if(!n)return;
     if(!inside(id,state.root))state.root='luca';
+    if(state.engine==='v2'&&state.detail==='focus'&&!state.layoutMeta.has(id) && n.parent){
+      // Deep search hits open their actual parent in the focus explorer.
+      state.root=n.parent;
+    }
     if(!state.extinct && n.status==='extinct'){$('extinctToggle').checked=true;state.extinct=true;}
     state.selected=id;
     if(state.engine==='v2'){
@@ -866,9 +970,9 @@
     state.selected=null;$('emptyDetail').hidden=false;$('taxonDetail').hidden=true;closeInspector();
   }
   function reset(){
-    Object.assign(state,{root:'luca',scale:'log',layoutMode:state.engine==='legacy'?'time':'structure',detail:'overview',extinct:true,events:true,selected:null});
+    Object.assign(state,{root:'luca',scale:'log',layoutMode:state.engine==='legacy'?'time':'structure',detail:state.engine==='legacy'?'overview':'focus',extinct:true,events:true,selected:null});
     state.foldedIds.clear();state.expandedIds.clear();
-    $('scaleSelect').value='log';$('layoutModeSelect').value=state.layoutMode;$('detailSelect').value='overview';
+    $('scaleSelect').value='log';$('layoutModeSelect').value=state.layoutMode;$('detailSelect').value=state.detail;
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
     window.EvoSelect?.syncAll();
     $('taxonSearch').value='';$('searchResults').hidden=true;
@@ -1027,6 +1131,14 @@
     $('openSidebar').addEventListener('click',()=>{$('sidebar').classList.add('open');$('mobileScrim').hidden=false;});
     $('mobileScrim').addEventListener('click',closeSidebar);
     $('closeInspector').addEventListener('click',closeInspector);
+    document.addEventListener('pointerdown',event=>{
+      const menu=$('breadcrumbMenu');
+      if(!menu.hidden&&!menu.contains(event.target)&&
+        !event.target.closest('.breadcrumb-overflow'))menu.hidden=true;
+    });
+    document.addEventListener('keydown',event=>{
+      if(event.key==='Escape')$('breadcrumbMenu').hidden=true;
+    });
     $('suggestNode').addEventListener('click',()=>selectNode('sapiens'));
     $('randomSpecies').addEventListener('click',()=>{
       const species=taxa.filter(n=>n.rank==='种');
@@ -1034,15 +1146,33 @@
       if(random)selectNode(random.id);
     });
     $('scaleSelect').addEventListener('change',e=>{state.scale=e.target.value;render(true);});
+    $('showMoreChildren').addEventListener('click',()=>{
+      if(state.expandedIds.has(state.root))state.expandedIds.delete(state.root);
+      else state.expandedIds.add(state.root);
+      render(true);
+    });
     $('layoutModeSelect').addEventListener('change',e=>{
       state.layoutMode=e.target.value;
+      if(state.engine==='v2'&&state.detail==='focus'&&state.layoutMode==='time'){
+        state.detail='overview';
+        $('detailSelect').value='overview';
+        window.EvoSelect?.sync($('detailSelect'));
+      }
       if(state.engine==='legacy' && state.layoutMode==='structure'){
         state.layoutMode='time';e.target.value='time';
         window.EvoSelect?.sync(e.target);
       }
       render(true);
     });
-    $('detailSelect').addEventListener('change',e=>{state.detail=e.target.value;render(true);});
+    $('detailSelect').addEventListener('change',e=>{
+      state.detail=e.target.value;
+      if(state.engine==='v2'&&state.detail==='focus'){
+        state.layoutMode='structure';
+        $('layoutModeSelect').value='structure';
+        window.EvoSelect?.sync($('layoutModeSelect'));
+      }
+      render(true);
+    });
     $('extinctToggle').addEventListener('change',e=>{
       state.extinct=e.target.checked;
       if(!state.extinct&&byId.get(state.selected)?.status==='extinct'){clearSelection();}
@@ -1225,6 +1355,9 @@
     if(byId.has('sapiens'))$('speciesA').value='sapiens';
     if(byId.has('pan'))$('speciesB').value='pan';
     if(state.engine==='legacy'){
+      state.detail='overview';
+      $('detailSelect').value='overview';
+      document.querySelector('#detailSelect option[value="focus"]').disabled=true;
       state.layoutMode='time';
       $('layoutModeSelect').value='time';
       $('layoutModeSelect').disabled=true;

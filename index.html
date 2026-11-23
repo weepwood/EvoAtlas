@@ -94,8 +94,8 @@
                 <label data-time-only>时间坐标
                   <select id="scaleSelect" aria-label="时间坐标"><option value="log">对数</option><option value="linear">线性</option></select>
                 </label>
-                <label>信息密度
-                  <select id="detailSelect" aria-label="信息密度"><option value="overview">概览</option><option value="full">全部节点</option></select>
+                <label>浏览方式
+                  <select id="detailSelect" aria-label="浏览方式"><option value="focus" selected>逐级浏览</option><option value="overview">结构概览</option><option value="full">全部节点</option></select>
                 </label>
               </div>
               <div class="toolbar-divider"></div>
@@ -131,6 +131,10 @@
               <div class="graph-tooltip" id="tooltip" hidden></div>
             </div>
             <div class="viewer-footer">
+              <div id="focusCommands" class="focus-commands" hidden>
+                <span id="focusStatus"></span>
+                <button id="showMoreChildren" class="focus-more-button" type="button" hidden>显示其余类群</button>
+              </div>
               <div class="legend-inline"><span><i class="legend-mark extant"></i>现生</span><span><i class="legend-mark extinct"></i>化石</span><span><i class="legend-mark ancestral"></i>支系</span></div>
               <span class="viewer-caveat">年代为教学近似值 · 多分叉和深层拓扑可能存在争议</span>
             </div>
@@ -165,11 +169,9 @@
       <aside class="inspector" id="detailPanel" aria-label="节点资料">
         <div class="inspector-header"><strong>节点资料</strong><button class="icon-button inspector-close" id="closeInspector" aria-label="关闭详情"><svg><use href="#i-x"/></svg></button></div>
         <div id="emptyDetail" class="inspector-empty">
-          <div class="empty-symbol"><svg><use href="#i-branch"/></svg></div>
-          <h2>从一个分支开始</h2>
-          <p>选择图谱中的类群，查看分类路径、主要特征和年代说明。</p>
-          <button id="suggestNode" class="outline-button">看看智人 <svg><use href="#i-arrow"/></svg></button>
-          <div class="inspector-help"><strong>如何使用</strong><span>滚轮缩放，按住空白处拖动画布；按 / 快速搜索。</span></div>
+          <h2>选择一个类群</h2>
+          <p>点击查看资料，双击进入它的下一层分支。</p>
+          <button id="suggestNode" class="outline-button">从智人开始 <svg><use href="#i-arrow"/></svg></button>
         </div>
         <article id="taxonDetail" class="taxon-detail" hidden>
           <div class="taxon-type" id="detailRank"></div>
@@ -184,6 +186,7 @@
       </aside>
     </div>
   </div>
+  <div id="breadcrumbMenu" class="breadcrumb-popover" hidden role="menu" aria-label="完整祖先路径"></div>
   <script src="./data/data.js"></script>
   <script src="./data/curation.js"></script>
   <script src="./data/species.js"></script>
