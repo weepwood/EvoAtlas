@@ -449,7 +449,10 @@
       const childCount=state.layoutMeta.get(n.id)?.childIds.length||0;
       const hidden=state.hiddenById?.get(n.id)||0;
       const internal=childCount>0||hidden>0;
-      return [n.id,{dx:14,dy:internal&&n.id!==state.root?-12:0,
+      // Parent labels sit above their branching line. Never put the focus
+      // root's title directly on its horizontal sibling connector.
+      const labelY=n.id===state.root?-24:internal?-12:0;
+      return [n.id,{dx:14,dy:labelY,
         side:'right',leaf:!internal,collapsed:false,hidden:false}];
     }));
   }
