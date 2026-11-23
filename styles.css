@@ -760,3 +760,57 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
     transition:none;
   }
 }
+
+
+/* 2026-11: The expanded-clade action lives beside its text label.
+   Keep the taxon node, its halo and the vertical/horizontal tree connectors
+   clear of clickable controls. */
+.graph-stage[data-engine=v2] .clade-collapse-toggle{
+  cursor:pointer;
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
+  fill:var(--surface);
+  stroke:var(--line);
+  stroke-width:1;
+  opacity:.96;
+  transition:fill .14s ease,stroke .14s ease;
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-caption{
+  fill:var(--muted);
+  font-size:11px;
+  font-weight:570;
+  paint-order:stroke;
+  stroke:none;
+  pointer-events:none;
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-chevron{
+  stroke:var(--muted);
+  stroke-width:1.25;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  fill:none;
+  pointer-events:none;
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-hit{
+  fill:var(--surface-alt);
+  stroke:var(--primary);
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-caption,
+.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-chevron{
+  fill:var(--primary);
+  stroke:var(--primary);
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
+  stroke-width:1.5;
+}
+@media(hover:none),(pointer:coarse){
+  .graph-stage[data-engine=v2] .node-more.expanded.clade-collapse-toggle{
+    opacity:1;
+    pointer-events:auto;
+  }
+}
+@media(prefers-reduced-motion:reduce){
+  .graph-stage[data-engine=v2] .clade-collapse-toggle .clade-collapse-hit{
+    transition:none;
+  }
+}
