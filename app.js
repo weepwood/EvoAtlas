@@ -216,7 +216,7 @@
       el.setAttribute('d','M '+to.x1+' '+to.y1+' L '+to.x2+' '+to.y2);
       el.style.opacity='';
     });
-    motion.ghosts.forEach(el=>el.remove());
+    motion.ghosts.forEach(item=>item.el.remove());
   }
   function animateTreeDisclosure(previousPositions,previousSegments,previousElements,id){
     if(state.engine!=='v2'||state.detail==='focus'||
@@ -267,7 +267,7 @@
           child.removeAttribute('data-expand');
         });
         layer.append(ghost);
-        ghosts.push(ghost);
+        ghosts.push({el:ghost,from,to:state.pos.get(id)||anchor});
       }
     }
     if(!nodes.length&&!ghosts.length)return;
@@ -293,9 +293,11 @@
         if(item.entering)item.el.style.opacity=String(eased);
       }
       for(const ghost of ghosts){
-        const oldId=[...previousElements].find(([,el])=>el===ghost)?.[0];
-        // Removed nodes are only visual echoes; no ARIA or hit targets.
-        ghost.style.opacity=String(1-eased);
+        // Fade and converge removed descendants back onto their actual clade.
+        ghost.el.setAttribute('transform','translate('+
+          mix(ghost.from.x,ghost.to.x,eased)+' '+
+          mix(ghost.from.y,ghost.to.y,eased)+')');
+        ghost.el.style.opacity=String(1-eased);
       }
       if(t<1)motion.frame=requestAnimationFrame(frame);
       else finishTreeMotion();
