@@ -200,22 +200,129 @@
   function layout(){
     return state.engine==='v2'?layoutV2():layoutLegacy();
   }
-  function toggleBranch(id){
+  // Short, interruptible geometry transitions help the user follow which
+  // descendants belong to the disclosure they just opened or closed.
+  let treeMotion=null;
+  const motionDuration=195;
+  function finishTreeMotion(){
+    if(!treeMotion)return;
+    const motion=treeMotion;treeMotion=null;
+    cancelAnimationFrame(motion.frame);
+    motion.nodes.forEach(({el,to})=>{
+      el.setAttribute('transform','translate('+to.x+' '+to.y+')');
+      el.style.opacity='';
+    });
+    motion.paths.forEach(({el,to})=>{
+      el.setAttribute('d','M '+to.x1+' '+to.y1+' L '+to.x2+' '+to.y2);
+      el.style.opacity='';
+    });
+    motion.ghosts.forEach(item=>item.el.remove());
+  }
+  function animateTreeDisclosure(previousPositions,previousSegments,previousElements,id){
+    if(state.engine!=='v2'||state.detail==='focus'||
+       state.visible.length>180||
+       window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    const anchor=previousPositions.get(id)||state.pos.get(id);
+    if(!anchor)return;
+    const layer=$('nodeLayer'),nodes=[],paths=[],ghosts=[];
+    const present=new Set(state.visible.map(n=>n.id));
+    for(const el of layer.querySelectorAll(':scope > .node')){
+      const to=state.pos.get(el.dataset.id);
+      if(!to)continue;
+      const from=previousPositions.get(el.dataset.id)||anchor;
+      const entering=!previousPositions.has(el.dataset.id);
+      if(entering || Math.abs(from.x-to.x)+Math.abs(from.y-to.y)>.3){
+        nodes.push({el,from,to,entering});
+        el.setAttribute('transform','translate('+from.x+' '+from.y+')');
+        if(entering)el.style.opacity='0';
+      }
+    }
+    const segKey=seg=>seg.kind+':'+seg.ownerId+':'+(seg.childId||'');
+    const previous=new Map(previousSegments.map(seg=>[segKey(seg),seg]));
+    const edges=[...$('edgeLayer').querySelectorAll(':scope > path')];
+    state.layoutSegments.forEach((to,index)=>{
+      const el=edges[index];
+      if(!el)return;
+      const from=previous.get(segKey(to))||
+        {x1:anchor.x,y1:anchor.y,x2:anchor.x,y2:anchor.y};
+      const entering=!previous.has(segKey(to));
+      paths.push({el,from,to,entering});
+      el.setAttribute('d','M '+from.x1+' '+from.y1+' L '+from.x2+' '+from.y2);
+      if(entering)el.style.opacity='0';
+    });
+    // Keep removed tips briefly visible while they converge on their true
+    // parent. Ghosts never intercept input or appear as active SVG nodes.
+    if(previousElements.size<140){
+      for(const [oldId,oldEl] of previousElements){
+        if(present.has(oldId))continue;
+        const from=previousPositions.get(oldId);
+        if(!from)continue;
+        const ghost=oldEl.cloneNode(true);
+        ghost.classList.remove('node');ghost.classList.add('branch-motion-ghost');
+        ghost.removeAttribute('data-id');ghost.removeAttribute('tabindex');
+        ghost.removeAttribute('role');ghost.setAttribute('aria-hidden','true');
+        ghost.style.pointerEvents='none';
+        ghost.querySelectorAll('[role],[tabindex],[data-expand]').forEach(child=>{
+          child.removeAttribute('role');child.removeAttribute('tabindex');
+          child.removeAttribute('data-expand');
+        });
+        layer.append(ghost);
+        ghosts.push({el:ghost,from,to:state.pos.get(id)||anchor});
+      }
+    }
+    if(!nodes.length&&!ghosts.length)return;
+    const motion={frame:0,nodes,paths,ghosts};
+    treeMotion=motion;
+    let origin=null;
+    const mix=(a,b,t)=>a+(b-a)*t;
+    const frame=timestamp=>{
+      if(treeMotion!==motion)return;
+      if(origin===null)origin=timestamp;
+      const t=Math.min(1,(timestamp-origin)/motionDuration);
+      const eased=1-Math.pow(1-t,3);
+      for(const item of nodes){
+        item.el.setAttribute('transform','translate('+
+          mix(item.from.x,item.to.x,eased)+' '+
+          mix(item.from.y,item.to.y,eased)+')');
+        if(item.entering)item.el.style.opacity=String(Math.max(0,Math.min(1,(eased-.50)/.50)));
+      }
+      for(const item of paths){
+        const v=key=>mix(item.from[key],item.to[key],eased);
+        item.el.setAttribute('d','M '+v('x1')+' '+v('y1')+
+          ' L '+v('x2')+' '+v('y2'));
+        if(item.entering)item.el.style.opacity=String(eased);
+      }
+      for(const ghost of ghosts){
+        // Fade and converge removed descendants back onto their actual clade.
+        ghost.el.setAttribute('transform','translate('+
+          mix(ghost.from.x,ghost.to.x,eased)+' '+
+          mix(ghost.from.y,ghost.to.y,eased)+')');
+        ghost.el.style.opacity=String(Math.max(0,1-eased*1.5));
+      }
+      if(t<1)motion.frame=requestAnimationFrame(frame);
+      else finishTreeMotion();
+    };
+    motion.frame=requestAnimationFrame(frame);
+  }
+  function toggleBranch(id,{restoreFocus=false}={}){
     if(state.engine!=='v2'||!byId.has(id))return;
+    finishTreeMotion();
     const node=state.layoutMeta.get(id);
     if(!node)return;
     const old=state.pos.get(id),screenX=old?state.tx+old.x*state.zoom:null,
       screenY=old?state.ty+old.y*state.zoom:null;
+    const previousPositions=new Map([...state.pos].map(([key,p])=>[key,{...p}]));
+    const previousSegments=state.layoutSegments.map(seg=>({...seg}));
+    const previousElements=new Map([...$('nodeLayer').querySelectorAll(':scope > .node')]
+      .map(el=>[el.dataset.id,el]));
     if(node.collapsed){
       state.foldedIds.delete(id);
       state.expandedIds.add(id);
     }else if(node.childIds.length){
       state.foldedIds.add(id);
       state.expandedIds.delete(id);
-      // A descendant cannot remain selected when its branch is hidden.
       if(state.selected&&state.selected!==id&&inside(state.selected,id)){
-        state.selected=id;
-        showDetail(byId.get(id));
+        state.selected=id;showDetail(byId.get(id));
       }
     }else return;
     render(false);
@@ -225,6 +332,12 @@
       state.ty=screenY-updated.y*state.zoom;
     }
     applyTransform();
+    animateTreeDisclosure(previousPositions,previousSegments,previousElements,id);
+    if(restoreFocus){
+      const focus=$('nodeLayer').querySelector('[data-expand="'+id+'"]')||
+        $('nodeLayer').querySelector('[data-id="'+id+'"]');
+      focus?.focus({preventScroll:true});
+    }
     syncUrl();
   }
 
@@ -476,8 +589,8 @@
       if(!p||!m)continue;
       const collapsed=Boolean(m.collapsed);
       const terminal=m.childIds.length===0&&!collapsed;
-      const text=collapsed?n.zh+' · '+m.hiddenDescendants+' 个后代':n.zh;
-      const dx=collapsed?56:14;
+      const text=collapsed?n.zh+'  '+m.hiddenDescendants+' 个后代':n.zh;
+      const dx=collapsed?38:14;
       const dy=collapsed||terminal?0:-17;
       const font=n.id===state.root?'650 16px system-ui, sans-serif':
         collapsed?'600 14px system-ui, sans-serif':'500 15px system-ui, sans-serif';
@@ -485,7 +598,7 @@
       const rect={left:p.x+dx,right:p.x+dx+width,
         top:p.y+dy-9,bottom:p.y+dy+10};
       const collides=occupied.some(other=>overlaps(rect,other));
-      const hidden=collides&&n.id!==state.selected&&n.id!==state.root;
+      const hidden=!collapsed&&collides&&n.id!==state.selected&&n.id!==state.root;
       if(!hidden)occupied.push(rect);
       labels.set(n.id,{dx,dy,side:'right',leaf:terminal,
         collapsed,hidden,rect});
@@ -536,18 +649,35 @@
           'data-expand':n.id,role:'button',tabindex:0,
           'aria-label':expanded?'收起'+n.zh+'支系':'展开'+n.zh+'，查看 '+hidden+' 个后代'});
         if(state.engine==='v2'&&layoutNode.collapsed){
-          // iTOL-inspired folded clade: a summary *glyph*, not an invented
-          // taxonomic node. Width is decorative; its tip is not an age.
-          const length=35+Math.min(13,Math.log2(hidden+1)*2);
-          const half=9+Math.min(3,Math.log2(hidden+1));
+          // A small disclosure marker is an *interface affordance*, not a
+          // phylogenetic split. The entire row remains keyboard/touch usable.
+          const nameX=37,countText=hidden+' 个后代';
+          const nameWidth=measuredTextWidth(n.zh,'600 13px system-ui, sans-serif');
+          const countX=nameX+nameWidth+11;
+          const hitWidth=Math.max(130,countX+measuredTextWidth(countText,'450 11px system-ui, sans-serif')+7);
+          more.setAttribute('aria-expanded','false');
+          more.setAttribute('aria-description','点击展开当前支系，双击节点名称进入类群');
+          more.append(make('rect',{class:'clade-row-bg',x:6,y:-20,
+            width:hitWidth-6,height:40,rx:6}));
+          // 12 × 12 is intentionally much smaller than the former ~45 × 22.
           more.append(make('path',{class:'clade-wedge',
-            d:'M 10 '+(-half)+' L '+(10+length)+' 0 L 10 '+half+' Z'}));
-          const caption=make('text',{x:10+length+10,y:4,
-            class:'clade-summary-caption'+(meta.hidden?' label-deemphasized':'')});
-          caption.textContent=n.zh+' · '+hidden+' 个后代';
-          more.append(caption);
-          more.append(make('rect',{class:'clade-hit-area',x:7,y:-18,
-            width:length+17+measuredTextWidth(caption.textContent),height:36,rx:5}));
+            d:'M 14 -6 L 26 0 L 14 6 Z'}));
+          const name=make('text',{x:nameX,y:0,'dominant-baseline':'middle',
+            class:'clade-summary-name'});
+          name.textContent=n.zh;more.append(name);
+          const count=make('text',{x:countX,y:0,'dominant-baseline':'middle',
+            class:'clade-summary-count'});
+          count.textContent=countText;more.append(count);
+          more.append(make('rect',{class:'clade-hit-area',x:6,y:-20,
+            width:hitWidth-6,height:40,rx:6}));
+        }else if(state.engine==='v2'&&expanded){
+          // Once expanded, the same branch gets a subtle reverse disclosure
+          // beside its junction, not another chip below the label.
+          more.classList.add('clade-collapse-toggle');
+          more.append(make('rect',{class:'clade-collapse-hit',
+            x:-30,y:-17,width:28,height:34,rx:6}));
+          more.append(make('path',{class:'clade-collapse-chevron',
+            d:'M -23 -2 L -16 5 L -9 -2'}));
         }else{
           const glyph=expanded?'−':hidden>99?'99+':'+'+hidden;
           const width=14+glyph.length*7.2;
@@ -555,11 +685,15 @@
           const count=make('text',{x:9+width/2,y:30,'text-anchor':'middle'});
           count.textContent=glyph;more.append(count);
         }
-        const action=()=>state.engine==='v2'?toggleBranch(n.id):focusRoot(n.id);
-        more.addEventListener('click',event=>{event.stopPropagation();action();});
+        if(state.engine==='v2')more.setAttribute('aria-expanded',String(expanded));
+        const action=(keyboard=false)=>state.engine==='v2'
+          ?toggleBranch(n.id,{restoreFocus:keyboard}):focusRoot(n.id);
+        more.addEventListener('click',event=>{
+          event.preventDefault();event.stopPropagation();action(false);
+        });
         more.addEventListener('keydown',event=>{
           if(event.key==='Enter'||event.key===' '){
-            event.preventDefault();event.stopPropagation();action();
+            event.preventDefault();event.stopPropagation();action(true);
           }
         });
         node.append(more);
@@ -580,8 +714,14 @@
         }
       });
       node.addEventListener('keydown',e=>navigateNodeKeyboard(e,n.id));
-      node.addEventListener('mouseenter',e=>{highlightLineage(n.id);showTip(e,n);});
-      node.addEventListener('mousemove',moveTip);
+      node.addEventListener('mouseenter',e=>{
+        highlightLineage(n.id);
+        if(!e.target.closest('.collapsed-summary'))scheduleTip(e,n);
+      });
+      node.addEventListener('mousemove',e=>{
+        if(e.target.closest('.collapsed-summary'))hideTip();
+        else moveTip(e);
+      });
       node.addEventListener('mouseleave',()=>{highlightLineage(null);hideTip();});
       node.addEventListener('focus',()=>{node.classList.add('keyboard-focus');highlightLineage(n.id);});
       node.addEventListener('blur',()=>{node.classList.remove('keyboard-focus');highlightLineage(null);});
@@ -833,6 +973,7 @@
     box.scrollLeft=box.scrollWidth;
   }
   function render(fitNow=false){
+    finishTreeMotion();
     $('treeSvg').classList.remove('has-hover');
     hideTip();
     build();layout();drawGrid();drawEvents();drawTree();drawMinimap();
@@ -873,8 +1014,27 @@
   }
   function closeInspector(){$('detailPanel').classList.remove('open');}
   function openInspector(){if(window.matchMedia('(max-width: 1080px)').matches)$('detailPanel').classList.add('open');}
-  function hideTip(){$('tooltip').hidden=true;}
+  let pendingTip=0;
+  let pendingTipPoint=null;
+  function hideTip(){
+    if(pendingTip)clearTimeout(pendingTip);
+    pendingTip=0;
+    $('tooltip').hidden=true;
+  }
+  function scheduleTip(e,n){
+    hideTip();
+    pendingTipPoint={clientX:e.clientX,clientY:e.clientY};
+    pendingTip=setTimeout(()=>{
+      pendingTip=0;
+      const el=[...$('nodeLayer').querySelectorAll(':scope > .node')]
+        .find(node=>node.dataset.id===n.id);
+      if(el?.matches(':hover') && !el.querySelector('.collapsed-summary:hover')){
+        showTip(pendingTipPoint,n);
+      }
+    },420);
+  }
   function moveTip(e){
+    if(pendingTip)pendingTipPoint={clientX:e.clientX,clientY:e.clientY};
     const tip=$('tooltip'),offset=14;
     tip.style.left=Math.min(window.innerWidth-250,e.clientX+offset)+'px';
     tip.style.top=Math.max(8,Math.min(window.innerHeight-85,e.clientY+offset))+'px';
@@ -904,9 +1064,9 @@
     if(state.engine==='v2'){
       // Reveal the selected true lineage, even when ancestors were auto-folded.
       for(const ancestor of path(id)){
-        // Selection pins its ancestor path temporarily; do not persist every
-        // ancestor as an explicit expansion after the selection changes.
-        state.foldedIds.delete(ancestor.id);
+        // Reveal a searched descendant's parents, but simply selecting a
+        // collapsed clade must not silently expand its own descendants.
+        if(ancestor.id!==id)state.foldedIds.delete(ancestor.id);
         if(ancestor.id===state.root)break;
       }
     }
