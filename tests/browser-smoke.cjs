@@ -119,16 +119,48 @@ async function main(){
     assert.equal(await cat.locator('.node-more').count(),1,'folded real branch has visible expand action');
     assert.equal(await cat.locator('.clade-wedge').count(),1,
       'folded branch must render the new triangular summary');
+    const wedgeSize=await cat.locator('.clade-wedge').evaluate(el=>{
+      const rect=el.getBBox();return {width:rect.width,height:rect.height};
+    });
+    assert.ok(wedgeSize.width<=14 && wedgeSize.height<=14,
+      'folded marker should be compact rather than a large 45px triangle');
+    const row=cat.locator('.collapsed-summary');
+    assert.equal(await row.getAttribute('aria-expanded'),'false');
+    assert.equal(await row.locator('.clade-summary-name').innerText(),'猫科');
+    assert.match(await row.locator('.clade-summary-count').innerText(),/个后代/);
+    const hitHeight=await row.locator('.clade-hit-area').getAttribute('height');
+    assert.ok(Number(hitHeight)>=40,'entire disclosure row should have a large hit area');
+    await page.screenshot({path:'artifacts/evoatlas-clade-compact.png'});
+    // Single click is information-only; disclosure opens the child branch.
+    await cat.locator('.node-core').dispatchEvent('click');
+    assert.equal(await cat.locator('.collapsed-summary').count(),1,
+      'selecting a clade must not silently expand its descendants');
     const beforeExpansion=await page.locator('#nodeLayer .node').count();
-    await cat.locator('.node-more').dispatchEvent('click');
+    await cat.locator('.clade-hit-area').dispatchEvent('click');
+    assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').getAttribute('aria-expanded'),'true');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),1,
       'local expansion must show true taxon children without changing root');
     assert.ok(await page.locator('#nodeLayer .node').count()>beforeExpansion);
     assert.equal(await page.locator('#headerBreadcrumb [aria-current="location"]').innerText(),
       await page.evaluate(()=>window.EVO_TAXA.find(t=>t.id==='mammalia').zh));
-    await page.locator('#nodeLayer .node[data-id="felidae"] .node-more').dispatchEvent('click');
+    await page.screenshot({path:'artifacts/evoatlas-clade-expanded.png'});
+    const collapseControl=page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle');
+    await collapseControl.focus();
+    await page.keyboard.press('Enter');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
-      'collapsing must hide only the family descendants');
+      'keyboard Enter must collapse only family descendants');
+    assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .collapsed-summary').getAttribute('aria-expanded'),'false');
+    assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .collapsed-summary').evaluate(el=>el===document.activeElement),true,
+      'keyboard focus must survive geometry rerender');
+    await page.waitForTimeout(260);
+    assert.equal(await page.locator('.branch-motion-ghost').count(),0,
+      'temporary collapse ghosts must be removed');
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-hit-area').dispatchEvent('click');
+    assert.equal(await page.locator('.branch-motion-ghost').count(),0,
+      'reduced motion should not create transient animation ghosts');
+    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').dispatchEvent('click');
+    await page.emulateMedia({reducedMotion:'no-preference'});
     const selectedBefore=await page.locator('#viewport').getAttribute('transform');
     await page.locator('#graphMinimap').click({position:{x:124,y:55}});
     const selectedAfter=await page.locator('#viewport').getAttribute('transform');
