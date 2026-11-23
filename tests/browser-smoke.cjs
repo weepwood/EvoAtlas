@@ -126,8 +126,8 @@ async function main(){
       'folded marker should be compact rather than a large 45px triangle');
     const row=cat.locator('.collapsed-summary');
     assert.equal(await row.getAttribute('aria-expanded'),'false');
-    assert.equal(await row.locator('.clade-summary-name').innerText(),'猫科');
-    assert.match(await row.locator('.clade-summary-count').innerText(),/个后代/);
+    assert.equal(await row.locator('.clade-summary-name').textContent(),'猫科');
+    assert.match(await row.locator('.clade-summary-count').textContent(),/个后代/);
     const hitHeight=await row.locator('.clade-hit-area').getAttribute('height');
     assert.ok(Number(hitHeight)>=40,'entire disclosure row should have a large hit area');
     await page.screenshot({path:'artifacts/evoatlas-clade-compact.png'});
