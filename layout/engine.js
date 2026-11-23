@@ -94,12 +94,13 @@
   }
 
   /**
-   * Contour-based tidy arrangement. At each subtree depth, two adjacent
-   * sibling contours are kept apart. No degree-2 (fake) parent is inserted.
+   * Planar tidy arrangement. The complete vertical envelopes of different
+   * sibling subtrees never overlap, including at *different* depths.
+   * No degree-2 (fake) parent is inserted.
    *
-   * This implementation favors auditability over asymptotically optimal
-   * Buchheim shifts. It is intended for 608-node verification; a future
-   * optimized implementation may preserve the same public contract.
+   * This conservative rule may make a full taxonomy taller, but prevents
+   * real line crossings in both structural and chronology-based views.
+   * It favors auditability over the tightest packing of a tree.
    */
   function verticalLayout(root,config){
     const half=config.labelHeight/2;
@@ -118,10 +119,13 @@
         if(previousChild){
           const gap=previousChild.children.length===0 && child.children.length===0
             ?config.leafGap:config.subtreeGap;
-          for(const [depth,top] of layout.upper){
-            if(!accumulatedLower.has(depth))continue;
-            offset=Math.max(offset,accumulatedLower.get(depth)+gap-top);
-          }
+          // Planarity is a *global subtree* constraint, not just a contour
+          // comparison at matching depths. A shallow sibling's long vertical
+          // stem can otherwise cut across a deep sibling's horizontal arms.
+          // Keep the entire Y envelope of each sibling clade disjoint.
+          const bottom=Math.max(...accumulatedLower.values());
+          const top=Math.min(...layout.upper.values());
+          offset=Math.max(0,bottom+gap-top);
         }
         const shifted=new Map();
         for(const [id,p] of layout.positions){

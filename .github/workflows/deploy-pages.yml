@@ -50,6 +50,7 @@ jobs:
           node scripts/validate_research.js
           node --test tests/layout-engine.test.cjs
           node --test tests/projection.test.cjs
+          node --test tests/planarity.test.cjs
 
       - name: Prepare isolated Pages artifact
         run: |

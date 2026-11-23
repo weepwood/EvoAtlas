@@ -9,6 +9,42 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
 
+// Inspect the exact orthogonal segments drawn into SVG, not only the
+// detached layout engine output.
+async function renderedCrossings(page){
+  return page.locator('#edgeLayer path').evaluateAll(paths=>{
+    const seg=paths.map(el=>{
+      const m=(el.getAttribute('d')||'').match(
+        /^M\s*([-\d.eE]+)\s+([-\d.eE]+)\s+L\s*([-\d.eE]+)\s+([-\d.eE]+)$/);
+      return m?{x1:+m[1],y1:+m[2],x2:+m[3],y2:+m[4]}:null;
+    }).filter(Boolean);
+    const eps=1e-5;
+    let intersections=0;
+    for(let i=0;i<seg.length;i++)for(let j=i+1;j<seg.length;j++){
+      const a=seg[i],b=seg[j];
+      const av=Math.abs(a.x1-a.x2)<eps,bv=Math.abs(b.x1-b.x2)<eps;
+      const ah=Math.abs(a.y1-a.y2)<eps,bh=Math.abs(b.y1-b.y2)<eps;
+      let v,h;
+      if(av&&bh){v=a;h=b;}
+      else if(bv&&ah){v=b;h=a;}
+      else if(av&&bv&&Math.abs(a.x1-b.x1)<eps){
+        if(Math.min(Math.max(a.y1,a.y2),Math.max(b.y1,b.y2))-
+           Math.max(Math.min(a.y1,a.y2),Math.min(b.y1,b.y2))>eps)intersections++;
+        continue;
+      }else if(ah&&bh&&Math.abs(a.y1-b.y1)<eps){
+        if(Math.min(Math.max(a.x1,a.x2),Math.max(b.x1,b.x2))-
+           Math.max(Math.min(a.x1,a.x2),Math.min(b.x1,b.x2))>eps)intersections++;
+        continue;
+      }else continue;
+      const between=(value,p,q)=>
+        value>Math.min(p,q)+eps&&value<Math.max(p,q)-eps;
+      if(between(v.x1,h.x1,h.x2)&&between(h.y1,v.y1,v.y2))
+        intersections++;
+    }
+    return intersections;
+  });
+}
+
 async function main(){
   const browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   const issues=[];
@@ -107,6 +143,8 @@ async function main(){
     await page.locator('#nodeLayer .node[data-id="mammalia"]').dispatchEvent('click');
     const overviewCount=await page.locator('#nodeLayer .node').count();
     assert.ok(overviewCount>15 && overviewCount<=70,'overview needs capped LOD');
+    assert.equal(await renderedCrossings(page),0,
+      'real SVG edges must not cross in dense time-mode overview');
     assert.ok(await page.locator('#graphMinimap').isVisible(),'overview must have a navigation minimap');
     assert.ok(await page.locator('#minimapEdges path').count()>10,'minimap should reflect branch topology');
     const viewportRect=page.locator('#minimapViewport');
@@ -195,6 +233,8 @@ async function main(){
     await page.locator('[data-select="detailSelect"] .custom-select-trigger').click();
     await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'全部节点'}).click();
     assert.ok(await page.locator('#nodeLayer .node').count()>120,'full mammal branch should contain many taxa');
+    assert.equal(await renderedCrossings(page),0,
+      'full mammal SVG must have no crossing branches');
     await page.locator('[data-select="detailSelect"] .custom-select-trigger').click();
     await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'概览'}).click();
     await page.mouse.move(780,650);
@@ -208,6 +248,8 @@ async function main(){
     await page.locator('[data-select="layoutModeSelect"] .custom-select-trigger').click();
     await page.locator('.custom-select-menu:not([hidden]) .custom-select-option').filter({hasText:'结构树'}).click();
     assert.equal(await page.locator('#graphStage').getAttribute('data-layout'),'structure');
+    assert.equal(await renderedCrossings(page),0,
+      'structural SVG segments must not cross each other');
     assert.equal(await page.locator('#scaleSelect').isDisabled(),true);
     assert.equal(await page.locator('#eventLayer').locator('*').count(),0);
     await page.waitForTimeout(120);
