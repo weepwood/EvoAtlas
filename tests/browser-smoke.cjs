@@ -209,6 +209,10 @@ async function main(){
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
       'keyboard Enter must collapse only family descendants');
     assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .collapsed-summary').getAttribute('aria-expanded'),'false');
+    await page.waitForFunction(()=>{
+      const control=document.querySelector('#nodeLayer .node[data-id="felidae"] .collapsed-summary');
+      return control===document.activeElement;
+    },null,{timeout:1200});
     assert.equal(await page.locator('#nodeLayer .node[data-id="felidae"] .collapsed-summary').evaluate(el=>el===document.activeElement),true,
       'keyboard focus must move back to the collapsed clade after toolbar closes');
     await page.waitForTimeout(260);
