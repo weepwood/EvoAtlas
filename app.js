@@ -716,7 +716,7 @@
       node.addEventListener('keydown',e=>navigateNodeKeyboard(e,n.id));
       node.addEventListener('mouseenter',e=>{
         highlightLineage(n.id);
-        if(!e.target.closest('.collapsed-summary'))showTip(e,n);
+        if(!e.target.closest('.collapsed-summary'))scheduleTip(e,n);
       });
       node.addEventListener('mousemove',e=>{
         if(e.target.closest('.collapsed-summary'))hideTip();
@@ -1014,7 +1014,24 @@
   }
   function closeInspector(){$('detailPanel').classList.remove('open');}
   function openInspector(){if(window.matchMedia('(max-width: 1080px)').matches)$('detailPanel').classList.add('open');}
-  function hideTip(){$('tooltip').hidden=true;}
+  let pendingTip=0;
+  function hideTip(){
+    if(pendingTip)clearTimeout(pendingTip);
+    pendingTip=0;
+    $('tooltip').hidden=true;
+  }
+  function scheduleTip(e,n){
+    hideTip();
+    const {clientX,clientY}=e;
+    pendingTip=setTimeout(()=>{
+      pendingTip=0;
+      const el=[...$('nodeLayer').querySelectorAll(':scope > .node')]
+        .find(node=>node.dataset.id===n.id);
+      if(el?.matches(':hover') && !el.querySelector('.collapsed-summary:hover')){
+        showTip({clientX,clientY},n);
+      }
+    },420);
+  }
   function moveTip(e){
     const tip=$('tooltip'),offset=14;
     tip.style.left=Math.min(window.innerWidth-250,e.clientX+offset)+'px';
