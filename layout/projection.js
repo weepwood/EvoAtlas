@@ -125,7 +125,7 @@
       const topGroups=rootChildren.length?rootChildren:[rootId];
       const queues=new Map(topGroups.map(id=>[id,[id]]));
       const offsets=new Map(topGroups.map(id=>[id,0]));
-      const suppressed=id=>manuallyFolded.has(id)&&!forced.has(id);
+      const suppressed=id=>manuallyFolded.has(id)&&(id===selectedId||!forced.has(id));
       // Root children must remain discoverable; the budget is a soft cap
       // for a very broad root, never an excuse to invent a taxonomic group.
       if(!suppressed(rootId)){
@@ -149,7 +149,7 @@
           const childIds=kids.get(id)||[];
           if(!childIds.length)continue;
           if(suppressed(id)){collapsed.add(id);continue;}
-          const mandatory=forced.has(id)||expanded.has(id);
+          const mandatory=(forced.has(id)&&id!==selectedId)||expanded.has(id);
           if(mandatory||visible.size+childIds.length<=limit){
             for(const childId of childIds){
               visible.add(childId);
