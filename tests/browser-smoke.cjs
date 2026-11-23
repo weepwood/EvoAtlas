@@ -202,8 +202,18 @@ async function main(){
       'collapse control must stay above the horizontal branch at node y=0');
     assert.ok(buttonPosition.hitWidth>=50&&buttonPosition.hitHeight>=30,
       'collapse target must be readable and touchable');
+    assert.equal(await collapseControl.evaluate(el=>getComputedStyle(el).pointerEvents),'auto',
+      'the just-expanded clade must expose a clickable collapse action');
+    assert.ok(Number(await collapseControl.evaluate(el=>getComputedStyle(el).opacity))>=0.95,
+      'the collapse action must remain visible after moving from the node to its label');
     await page.screenshot({path:'artifacts/evoatlas-clade-collapse-right.png'});
-    await collapseControl.focus();
+    // Exercise real pointer input on the control moved to the right of the name.
+    await collapseControl.locator('.clade-collapse-hit').click();
+    assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
+      'the label-side collapse control must respond to a real mouse click');
+    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-hit-area').click();
+    await page.waitForTimeout(240);
+    await page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle').focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
       'keyboard Enter must collapse only family descendants');
