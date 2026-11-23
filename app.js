@@ -322,7 +322,7 @@
     }else if(node.childIds.length){
       state.foldedIds.add(id);
       state.expandedIds.delete(id);
-      if(state.lastDisclosureId===id)state.lastDisclosureId=null;
+      state.lastDisclosureId=id;
       if(state.selected&&state.selected!==id&&inside(state.selected,id)){
         state.selected=id;showDetail(byId.get(id));
       }
@@ -336,13 +336,11 @@
     applyTransform();
     animateTreeDisclosure(previousPositions,previousSegments,previousElements,id);
     if(restoreFocus){
-      // Native buttons may restore their own focus after Enter activates
-      // them, even if the button becomes hidden during this click handler.
-      // Move focus after the native click sequence and current redraw.
+      // The fixed HTML control stays mounted during both transitions.
+      // For keyboard activation of an SVG summary, move focus to that
+      // stable control rather than an element being recreated.
       requestAnimationFrame(()=>{
-        const focus=$('nodeLayer').querySelector('[data-expand="'+id+'"]')||
-          $('nodeLayer').querySelector('[data-id="'+id+'"]');
-        focus?.focus({preventScroll:true});
+        if(!$('branchAction').hidden)$('collapseBranch').focus({preventScroll:true});
       });
     }
     syncUrl();
@@ -1003,17 +1001,24 @@
     if(state.engine==='v2'&&!focusMode){
       const recent=state.layoutMeta.get(state.lastDisclosureId);
       const selected=state.layoutMeta.get(state.selected);
-      if(recent?.childIds.length && !recent.collapsed && state.lastDisclosureId!==state.root)
+      if(recent && (children.get(state.lastDisclosureId)||[]).length &&
+         state.lastDisclosureId!==state.root)
         branchId=state.lastDisclosureId;
-      else if(selected?.childIds.length && !selected.collapsed && state.selected!==state.root)
+      else if(selected && (children.get(state.selected)||[]).length &&
+              state.selected!==state.root)
         branchId=state.selected;
     }
     state.branchActionId=branchId;
     branchBar.hidden=!branchId;
     branchBar.parentElement.classList.toggle('has-branch-action',Boolean(branchId));
     if(branchId){
+      const collapsed=Boolean(state.layoutMeta.get(branchId)?.collapsed);
+      const verb=collapsed?'展开':'收起';
+      $('branchActionState').textContent=collapsed?'已收起':'已展开';
       $('branchActionName').textContent=byId.get(branchId)?.zh||branchId;
-      $('collapseBranch').setAttribute('aria-label','收起'+(byId.get(branchId)?.zh||'当前')+'支系');
+      $('collapseBranch').textContent=verb+'支系';
+      $('collapseBranch').setAttribute('aria-label',verb+(byId.get(branchId)?.zh||'当前')+'支系');
+      $('collapseBranch').setAttribute('aria-expanded',String(!collapsed));
     }
     const controls=$('focusCommands'),toggle=$('showMoreChildren'),status=$('focusStatus');
     controls.hidden=!focusMode;
@@ -1152,7 +1157,7 @@
   }
   function reset(){
     Object.assign(state,{root:'luca',scale:'log',layoutMode:state.engine==='legacy'?'time':'structure',detail:state.engine==='legacy'?'overview':'focus',extinct:true,events:true,selected:null});
-    state.foldedIds.clear();state.expandedIds.clear();
+    state.foldedIds.clear();state.expandedIds.clear();state.lastDisclosureId=null;
     $('scaleSelect').value='log';$('layoutModeSelect').value=state.layoutMode;$('detailSelect').value=state.detail;
     $('extinctToggle').checked=true;$('eventToggle').checked=true;
     window.EvoSelect?.syncAll();
@@ -1328,7 +1333,7 @@
     });
     $('scaleSelect').addEventListener('change',e=>{state.scale=e.target.value;render(true);});
     $('collapseBranch').addEventListener('click',()=>{
-      if(state.branchActionId)toggleBranch(state.branchActionId,{restoreFocus:true});
+      if(state.branchActionId)toggleBranch(state.branchActionId);
     });
     $('showMoreChildren').addEventListener('click',()=>{
       if(state.expandedIds.has(state.root))state.expandedIds.delete(state.root);
