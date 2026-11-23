@@ -284,7 +284,7 @@
         item.el.setAttribute('transform','translate('+
           mix(item.from.x,item.to.x,eased)+' '+
           mix(item.from.y,item.to.y,eased)+')');
-        if(item.entering)item.el.style.opacity=String(eased);
+        if(item.entering)item.el.style.opacity=String(Math.max(0,Math.min(1,(eased-.50)/.50)));
       }
       for(const item of paths){
         const v=key=>mix(item.from[key],item.to[key],eased);
@@ -297,7 +297,7 @@
         ghost.el.setAttribute('transform','translate('+
           mix(ghost.from.x,ghost.to.x,eased)+' '+
           mix(ghost.from.y,ghost.to.y,eased)+')');
-        ghost.el.style.opacity=String(1-eased);
+        ghost.el.style.opacity=String(Math.max(0,1-eased*1.5));
       }
       if(t<1)motion.frame=requestAnimationFrame(frame);
       else finishTreeMotion();
