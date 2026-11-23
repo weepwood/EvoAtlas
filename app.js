@@ -336,9 +336,14 @@
     applyTransform();
     animateTreeDisclosure(previousPositions,previousSegments,previousElements,id);
     if(restoreFocus){
-      const focus=$('nodeLayer').querySelector('[data-expand="'+id+'"]')||
-        $('nodeLayer').querySelector('[data-id="'+id+'"]');
-      focus?.focus({preventScroll:true});
+      // Native buttons may restore their own focus after Enter activates
+      // them, even if the button becomes hidden during this click handler.
+      // Move focus after the native click sequence and current redraw.
+      requestAnimationFrame(()=>{
+        const focus=$('nodeLayer').querySelector('[data-expand="'+id+'"]')||
+          $('nodeLayer').querySelector('[data-id="'+id+'"]');
+        focus?.focus({preventScroll:true});
+      });
     }
     syncUrl();
   }
