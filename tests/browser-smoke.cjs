@@ -184,6 +184,25 @@ async function main(){
     await page.waitForTimeout(240);
     await page.screenshot({path:'artifacts/evoatlas-clade-expanded.png'});
     const collapseControl=page.locator('#nodeLayer .node[data-id="felidae"] .clade-collapse-toggle');
+    assert.equal(await collapseControl.locator('.clade-collapse-caption').textContent(),'收起',
+      'the collapse action must read as an explicit command');
+    const buttonPosition=await collapseControl.evaluate(el=>{
+      const label=el.parentElement.querySelector('.node-label')?.getBBox();
+      const hit=el.querySelector('.clade-collapse-hit').getBBox();
+      const core=el.parentElement.querySelector('.node-core').getBBox();
+      return {labelRight:label.x+label.width,hitLeft:hit.x,
+        coreRight:core.x+core.width,hitTop:hit.y,hitBottom:hit.y+hit.height,
+        hitWidth:hit.width,hitHeight:hit.height};
+    });
+    assert.ok(buttonPosition.hitLeft>buttonPosition.labelRight+3,
+      'collapse action must sit after the label, never atop its text');
+    assert.ok(buttonPosition.hitLeft>buttonPosition.coreRight+10,
+      'collapse action must not cover the node circle or trunk');
+    assert.ok(buttonPosition.hitBottom<-0.5,
+      'collapse control must stay above the horizontal branch at node y=0');
+    assert.ok(buttonPosition.hitWidth>=50&&buttonPosition.hitHeight>=30,
+      'collapse target must be readable and touchable');
+    await page.screenshot({path:'artifacts/evoatlas-clade-collapse-right.png'});
     await collapseControl.focus();
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('#nodeLayer .node[data-id="catalog-panthera-tigris"]').count(),0,
