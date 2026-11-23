@@ -143,3 +143,21 @@ test('mobile focus is shallower but still navigable and pins deep searches',()=>
   while(node?.parent)node=map.get(node.parent);
   assert.equal(node.id,rootId);
 });
+
+
+test('selecting a folded taxon does not implicitly disclose it',()=>{
+  const baseline=view('mammalia');
+  assert.equal(baseline.byId.get('felidae').collapsed,true);
+  const selected=view('mammalia',{selectedId:'felidae'});
+  assert.equal(selected.byId.get('felidae').collapsed,true,
+    'single-click selection must not expand the selected taxon');
+  const searched=view('mammalia',{selectedId:'catalog-panthera-tigris'});
+  assert.ok(searched.byId.has('catalog-panthera-tigris'),
+    'deep search should still reveal canonical ancestor chain');
+  const manuallyFolded=view('mammalia',{
+    selectedId:'felidae',foldedIds:['felidae']
+  });
+  assert.equal(manuallyFolded.byId.get('felidae').collapsed,true,
+    'manual disclosure state has priority over mere selection');
+  assert.equal(JSON.stringify(taxonomy),origin);
+});
