@@ -25,6 +25,7 @@ jobs:
           node --check layout/engine.js
           node --check layout/projection.js
           node --check tests/layout-engine.test.cjs
+          node --check tests/planarity.test.cjs
           node --check ui/custom-select.js
           node --check data/data.js
           node --check data/curation.js
@@ -34,6 +35,8 @@ jobs:
         run: node --test tests/layout-engine.test.cjs
       - name: Projection and local folding contracts
         run: node --test tests/projection.test.cjs
+      - name: Tree geometry planarity across all view modes
+        run: node --test tests/planarity.test.cjs
       - name: Curated data structure
         run: python3 scripts/validate_data.py
       - name: HTML and JavaScript element contracts
