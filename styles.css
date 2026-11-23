@@ -795,9 +795,10 @@ svg{display:block}button:focus-visible,a:focus-visible,input:focus-visible,selec
   fill:var(--surface-alt);
   stroke:var(--primary);
 }
-.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-caption,
-.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-chevron{
+.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-caption{
   fill:var(--primary);
+}
+.graph-stage[data-engine=v2] .clade-collapse-toggle:is(:hover,:focus-visible) .clade-collapse-chevron{
   stroke:var(--primary);
 }
 .graph-stage[data-engine=v2] .clade-collapse-toggle:focus-visible .clade-collapse-hit{
